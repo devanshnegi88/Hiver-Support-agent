@@ -5,7 +5,7 @@ dataset, targeting the `AmazonHelp` brand. Given an incoming customer tweet,
 the agent:
 
 1. Classifies intent into one of 10 brand-derived categories
-2. Drafts a reply grounded in how AmazonHelp has historically resolved similar issues (TF-IDF retrieval over ~historical resolved threads + LLM generation)
+2. Drafts a reply grounded in how AmazonHelp has historically resolved similar issues (TF-IDF retrieval over historical resolved threads + LLM generation)
 3. Decides auto-handle vs. escalate, with a stated reason
 
 See `REPORT.md` for problem framing, results, and failure analysis, and
@@ -14,299 +14,356 @@ See `REPORT.md` for problem framing, results, and failure analysis, and
 ## Why AmazonHelp
 
 Highest-volume single brand in the dataset, wide variety of issue types
-(delivery, refunds, account, billing) — a brand with only 1-2 issue types
+(delivery, refunds, account, billing). A brand with only 1–2 issue types
 would make the intent taxonomy trivial and the escalation logic uninteresting.
 
-## Setup (should take ~5 min)
+## LLM backends (automatic)
 
-```bash
-git clone <this-repo>
-cd hiver-support-agent
-pip install -r requirements.txt
-export GOOGLE_API_KEY="your-gemini-api-key"
+Every LLM call (intent, reply, judge) goes through `src/llm_client.py`.
+It tries, in order:
+
+1. **Gemini** (`GOOGLE_API_KEY` / `GEMINI_API_KEY`) — preferred
+2. **xAI Grok** (`XAI_API_KEY`) — if Gemini is missing, blocked, or exhausted
+3. **Ollama** local model (`llama3.2:3b`, sized for **8GB RAM**)
+4. **Keyword heuristic** — last resort so eval never crashes
+
+You only need **one** of Gemini, xAI, or Ollama to run the agent. Ollama is
+the path that works with no cloud credits.
+
+---
+
+## How to run the whole project
+
+Commands below use **PowerShell** (`py`). On bash/macOS/Linux, use
+`python` instead of `py` and `export VAR=value` instead of
+`$env:VAR = "value"`.
+
+### Step 0 — Prerequisites
+
+- Python 3.11+
+- ~1 GB free disk for the dataset + Ollama model
+- One of:
+  - a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey), **or**
+  - an xAI key from [console.x.ai](https://console.x.ai) with credits, **or**
+  - [Ollama](https://ollama.com) with `llama3.2:3b` (recommended on 8GB RAM)
+
+### Step 1 — Clone and install
+
+```powershell
+cd C:\Users\DELL\Downloads\hiver-support-agent\hiver-support-agent
+py -m pip install -r requirements.txt
 ```
 
-See **Gemini API keys (automatic failover)** below for backups and PowerShell.
+Optional virtualenv:
 
-### 0. Run the test suite first (no API key, no dataset needed)
-
-```bash
-make test
-# or: python -m pytest tests/ -v
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install -r requirements.txt
 ```
 
-68 unit tests cover the pure-logic pieces — escalation rules, TF-IDF
-retrieval (including the self-match leakage guard used during eval),
-data cleaning/thread reconstruction, the keyword baseline, the automated
-hallucination checker, the bootstrap statistics helpers, and Gemini API-key
-failover. None of them call an LLM or touch the raw dataset, so this is the
-fastest way to confirm the logic is correct before spending time on API keys
-or a 350MB download — and it's what I'd point to first in a live code
-walkthrough.
+### Step 2 — Unit tests (no API key, no dataset)
 
-### 1. Get the data
+```powershell
+py -m pytest tests/ -v
+```
+
+68 tests. This is the fastest check that escalation, retrieval, baselines,
+stats, hallucination checks, and key-failover logic are correct.
+
+### Step 3 — Choose an LLM
+
+**Option A — Gemini (preferred for reported numbers)**
+
+```powershell
+$env:GOOGLE_API_KEY = "your-gemini-api-key"
+```
+
+Optional backups (auto-switch if the first key dies):
+
+```powershell
+$env:GOOGLE_API_KEY_2 = "backup-key-2"
+$env:GOOGLE_API_KEY_3 = "backup-key-3"
+```
+
+**Option B — xAI (if Gemini is blocked or out of quota)**
+
+```powershell
+$env:XAI_API_KEY = "your-xai-key"
+```
+
+**Option C — Ollama on 8GB RAM (no cloud key)**
+
+```powershell
+winget install Ollama.Ollama
+```
+
+Close and reopen the terminal, then:
+
+```powershell
+ollama pull llama3.2:3b
+```
+
+Ollama serves `http://127.0.0.1:11434` in the background. Do **not** pull
+7B/8B models on 8GB RAM.
+
+Force a backend:
+
+```powershell
+$env:LLM_PROVIDER = "ollama"   # skip cloud, use Ollama
+$env:LLM_PROVIDER = "local"    # keyword heuristic only (no LLM)
+```
+
+`$env:...` lasts for **this PowerShell window only**. Keep using the same
+window for later steps. `export` does nothing in PowerShell.
+
+### Step 4 — Get the data
 
 Download `twcs.csv` from Kaggle:
 https://www.kaggle.com/datasets/thoughtvector/customer-support-on-twitter
 
-Place it at `data/twcs.csv`. (Not committed to the repo — it's ~350MB.)
+Place it at `data/twcs.csv` (~350MB, not committed).
 
-### 2. Build the brand's historical precedent set
+**Skip this step** if `data/threads.parquet` already exists (it does in
+this working copy).
 
-```bash
-python src/data_prep.py
-```
-
-This reconstructs (customer message → AmazonHelp's reply) pairs from the raw
-tweet table and writes `data/threads.parquet`. Runs in under a minute even on
-the full 3M-row file (it's a groupby/join, not an LLM call).
-
-### 3. Build + label the golden evaluation set
-
-```bash
-python eval/golden_set_builder.py --n 200
-```
-
-Writes `data/golden_set_candidates.csv` — pre-filtered (near-duplicates,
-very short messages, probable non-English text removed) and stratified
-across message-length × a keyword-heuristic topic guess so rare intents
-(billing disputes, account access) are actually represented rather than
-drowned out by delivery complaints. **See `LABELING_GUIDE.md` for the full
-sampling methodology and the exact decision rules to use while labeling**
-(what makes something `complaint_escalation` vs. just an unhappy customer,
-how to handle multi-issue messages, escalation criteria, etc.) — hand-label
-the `intent` and `escalate_gold` columns per that guide, save as
-`data/golden_set.csv`.
-
-Then sanity-check the labels before spending eval budget on them:
-
-```bash
-python eval/label_quality_check.py
-```
-
-Checks the set is 150-250 rows, every label is valid and non-empty, every
-intent has at least 5 examples (below that, per-class metrics are close to
-meaningless), no intent has zero examples, and flags any case where a
-label's assigned intent is in `ALWAYS_ESCALATE_INTENTS` but you marked
-`escalate_gold=False` (worth a second look — not necessarily wrong, but
-worth reconciling explicitly). **A pre-labeled `data/golden_set.csv` is
-included in this repo** so graders can reproduce results without
-relabeling from scratch.
-
-### 4. Split into dev / test — do this before touching thresholds
-
-```bash
-python eval/split_golden_set.py
-```
-
-Writes `data/golden_set_dev.csv` and `data/golden_set_test.csv`, stratified
-by intent (70/30 split by default — `DEV_SPLIT_FRACTION` in `src/config.py`).
-**Use dev while iterating on prompts/thresholds
-(`MIN_AUTO_HANDLE_CONFIDENCE`, `MIN_GROUNDING_SIMILARITY` in
-`src/config.py`); only run against test once, at the end, for the numbers
-in `REPORT.md`.** Reporting numbers on the same data you tuned thresholds
-against is the single most common way take-home eval results end up
-misleading — this split exists specifically to avoid that.
-
-### 5. Run the agent on a single message (sanity check)
-
-```bash
-python src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
-```
-
-### 6. (Recommended) Ablation — does grounding retrieval actually help?
-
-```bash
-python eval/ablation.py
-```
-
-Runs the same dev-split messages through reply generation twice — once with
-real retrieved precedents, once with retrieval disabled — and reports a
-paired bootstrap significance test on LLM-judge scores per axis, plus the
-automated hallucination-proxy rate in both conditions. This is the evidence
-behind the retrieval-grounding design choice, not just an architecture
-diagram asserting it helps.
-
-### 7. Run the full evaluation (headline results)
-
-```bash
-python eval/run_eval.py
-```
-
-Runs the agent + both baselines over the **test** split only, scores intent
-accuracy/F1 with bootstrap 95% confidence intervals, escalation
-precision/recall, LLM-judged reply quality (with CIs), the automated
-non-LLM hallucination-proxy rate, and a paired bootstrap significance test
-of the agent vs. each baseline. Prints a comparison table and writes
-`results/eval_results.json`. **This is the ~15-minute step** — budget for
-it based on test-split size × Gemini latency (~1-2s/call, 3 calls per
-example per system ≈ 10-15 min at n≈60 test examples out of a 200-example
-golden set at default rate limits; reduce `--n` in step 3 to run faster).
-
-### 8. (Optional) Judge calibration — human agreement check
-
-```bash
-python eval/judge_calibration.py --step sample --n 35
-# hand-score the human_* columns in data/judge_calibration_sample.csv
-python eval/judge_calibration.py --step compare
-```
-
-Steps 4, 6, 7, 8 are also available as `make split`, `make dev-ablation`,
-`make eval`, `make calibrate-sample` / `make calibrate-compare`, or
-`make all` to chain data → split → ablation → eval end to end.
-
-## Gemini API keys (automatic failover)
-
-`eval/run_eval.py` makes hundreds of Gemini calls (intent + reply + judge
-across 140 test examples × 3 systems). One expired or quota-exhausted key
-would otherwise kill the run mid-way. `src/llm_client.py` keeps a key pool
-and fails over on the **same call** so you do not have to restart.
-
-**Primary + numbered backups** (first-listed is tried first):
-
-```bash
-export GOOGLE_API_KEY="key-1"
-export GOOGLE_API_KEY_2="key-2"
-export GOOGLE_API_KEY_3="key-3"
-```
-
-PowerShell (this session only — `export` does nothing here):
+### Step 5 — Build historical precedents
 
 ```powershell
-$env:GOOGLE_API_KEY = "key-1"
-$env:GOOGLE_API_KEY_2 = "key-2"
-$env:GOOGLE_API_KEY_3 = "key-3"
+py src/data_prep.py
 ```
 
-**Or one comma-separated list:**
+Reconstructs (customer message → AmazonHelp reply) pairs and writes
+`data/threads.parquet`. Under a minute; no LLM.
 
-```bash
-export GOOGLE_API_KEYS="key-1,key-2,key-3"
-```
+**Skip** if `data/threads.parquet` is already present.
+
+### Step 6 — Golden set (label + quality check)
+
+This repo already includes a labeled `data/golden_set.csv` (200 examples).
+To rebuild candidates from scratch:
 
 ```powershell
-$env:GOOGLE_API_KEYS = "key-1,key-2,key-3"
+py eval/golden_set_builder.py --n 200
 ```
 
-Duplicates are dropped; order is preserved. Intent classification, reply
-drafting, and the LLM judge all go through this client, so failover is
-inherited everywhere.
-
-| Error | What happens |
-|---|---|
-| Expired / invalid API key (`API_KEY_INVALID`, "API key expired") | That key is **retired** for the rest of the process; the next live key is used immediately |
-| 429 / quota exhausted | Rotates to the next key but **keeps** the old one in the pool (per-minute limits recover) |
-| Model 404 (retired model id) | **Not** treated as a key failure — fix `GEN_MODEL` / `JUDGE_MODEL` in `src/config.py` |
-
-On failover the process prints (keys themselves are never logged):
-
-```text
-Gemini API key 1/3 failed (expired/invalid); switching to key 2/3.
-```
-
-If every cloud key is dead, the client falls through to **Ollama**, then a
-keyword heuristic. Get Gemini keys from
-[Google AI Studio](https://aistudio.google.com/apikey). Current model pin is
-`gemini-3.6-flash` (`gemini-2.0-flash` was retired).
-
-Calls go to the Gemini **Interactions** REST API with only the
-`x-goog-api-key` header (no Gemini Python SDK). The `google.generativeai`
-and `google-genai` clients send an OAuth `Authorization` header that
-Gemini 3.x rejects with `401 ACCESS_TOKEN_TYPE_UNSUPPORTED`.
-
-A valid key from [Google AI Studio](https://aistudio.google.com/apikey)
-starts with `AIza` (standard) or `AQ.` (auth; this is what new keys are).
-Not a `gcloud` OAuth token (`ya29...`) and not a key from another provider.
-If you have an older **Unrestricted** `AIza` key, restrict it to Gemini API
-only in AI Studio — unrestricted standard keys are now rejected.
-`GEMINI_API_KEY` is accepted as an alias for `GOOGLE_API_KEY`.
-
-On startup the client prints the key *kind* (prefix only), e.g.
-`Gemini client: 1 key(s) loaded (key 1=auth AQ.).` so you can confirm the
-env var is the right type of secret without leaking it.
-
-**If Google still returns `ACCESS_TOKEN_TYPE_UNSUPPORTED` for an `AQ.` key:**
-that is a known Gemini API issue on some AI Studio projects (the same 401
-happens with raw curl). The client will try `Authorization: Bearer` then `x-goog-api-key` before
-giving up. To still run eval, set an
-xAI key and the client falls back automatically:
+Hand-label `intent` and `escalate_gold` using `LABELING_GUIDE.md`, save as
+`data/golden_set.csv`, then:
 
 ```powershell
-$env:XAI_API_KEY = "your-xai-key"   # https://console.x.ai
+py eval/label_quality_check.py
 ```
 
-## Local Ollama (8GB RAM)
-
-When Gemini/xAI keys are missing, blocked, or out of credits, the client
-calls a local [Ollama](https://ollama.com) model. Default is **`llama3.2:3b`**
-(~2GB download, ~3–4GB RAM) so it fits an 8GB machine. Do not pull 7B/8B
-weights on 8GB RAM — they will swap.
+Must print `No issues found` before you split. **Skip labeling** if you are
+reproducing with the checked-in golden set; still run the quality check:
 
 ```powershell
-winget install Ollama.Ollama
-ollama pull llama3.2:3b
-# Ollama usually starts its own background service on http://127.0.0.1:11434
+py eval/label_quality_check.py
 ```
 
-Then:
+### Step 7 — Dev / test split (before touching thresholds)
+
+```powershell
+py eval/split_golden_set.py
+```
+
+Writes `data/golden_set_dev.csv` (60) and `data/golden_set_test.csv` (140),
+stratified by intent. Tune prompts/thresholds on **dev** only. Run test
+**once**, at the end, for `REPORT.md`.
+
+**Skip** if those two CSVs already exist and you have not relabeled.
+
+### Step 8 — Smoke-test one message
 
 ```powershell
 py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
 ```
 
-You should see `Using Ollama model llama3.2:3b (8GB RAM profile, num_ctx=2048).`
+Expect JSON with `intent`, `draft_reply`, `escalate`, `escalation_reason`.
+
+| Log line | Meaning |
+|---|---|
+| `Gemini auth working: ...` | Cloud Gemini is live |
+| `falling back to xAI` | Gemini failed; Grok is live |
+| `Using Ollama model llama3.2:3b` | Local 8GB model is live |
+| `using keyword heuristic backend` | No LLM available; eval can still run |
+
+First Ollama call can take 30–60s while the model loads.
+
+### Step 9 — (Recommended) Ablation on dev
+
+Does retrieval actually help replies?
+
+```powershell
+py eval/ablation.py
+```
+
+Dev split only. Uses the LLM (or Ollama). Do not use these numbers as the
+headline test results.
+
+### Step 10 — Full evaluation (headline numbers)
+
+```powershell
+py eval/run_eval.py
+```
+
+Runs the agent + both baselines on the **140 test examples**, then writes
+`results/eval_results.json`.
+
+Timing:
+
+| Backend | Rough time |
+|---|---|
+| Gemini / xAI | 20–40 min (many API calls) |
+| Ollama 3B on CPU | longer; leave it running |
+| Keyword heuristic | ~1–2 min |
+
+**Run this exactly once** after you stop changing prompts/thresholds.
+Re-running after peeking at test scores and then tuning is leakage.
+
+Copy the printed table into `REPORT.md`. If you used Ollama or the
+heuristic because Gemini/xAI failed, say so in the report — those are not
+Gemini numbers.
+
+### Step 11 — (Optional) Judge calibration
+
+```powershell
+py eval/judge_calibration.py --step sample --n 35
+```
+
+Hand-score the `human_*` columns in `data/judge_calibration_sample.csv`,
+then:
+
+```powershell
+py eval/judge_calibration.py --step compare
+```
+
+### Step 12 — Fill the deliverables
+
+- `REPORT.md` — problem, metrics, failure analysis
+- `DECISION_LOG.md` — non-obvious calls
+- `LABELING_GUIDE.md` — already written; used in step 6
+
+---
+
+## Already-done checklist (this working copy)
+
+You can start at **step 2** then **step 8** if these files exist:
+
+| File | Role |
+|---|---|
+| `data/threads.parquet` | Precedent index |
+| `data/golden_set.csv` | 200 labeled examples |
+| `data/golden_set_dev.csv` / `golden_set_test.csv` | 60 / 140 split |
+| `results/eval_results.json` | Last eval run (re-run step 10 after a real LLM is up) |
+
+---
+
+## Make shortcuts
+
+```text
+make test            py -m pytest tests/ -v
+make data            py src/data_prep.py
+make golden-candidates
+make label-check
+make split
+make dev-ablation
+make eval
+make all             data → split → ablation → eval
+```
+
+On Windows without `make`, use the `py ...` commands in the steps above.
+
+---
+
+## Gemini keys (detail)
+
+`eval/run_eval.py` makes hundreds of LLM calls. `src/llm_client.py` fails
+over on the **same call** so you do not restart.
+
+```powershell
+$env:GOOGLE_API_KEY = "key-1"
+$env:GOOGLE_API_KEY_2 = "key-2"
+$env:GOOGLE_API_KEYS = "key-1,key-2,key-3"
+```
+
+| Error | What happens |
+|---|---|
+| Expired / invalid key | Retired for this process; next key used immediately |
+| 429 / quota | Rotate to next key; keep the old one (limits recover) |
+| `API_KEY_SERVICE_BLOCKED` / `ACCESS_TOKEN_TYPE_UNSUPPORTED` | Skip Gemini; try xAI, then Ollama |
+| xAI 403 out of credits | Skip xAI; try Ollama |
+| Ollama not running | Keyword heuristic so eval still finishes |
+| Model 404 | Not a key failure — pin `GEN_MODEL` in `src/config.py` (currently `gemini-3.6-flash`) |
+
+Keys themselves are never logged. Startup prints the *kind* only, e.g.
+`Gemini client: 1 key(s) loaded (key 1=auth AQ.).`
+
+A valid Gemini key from [AI Studio](https://aistudio.google.com/apikey)
+starts with `AIza` or `AQ.` — not a `gcloud` token (`ya29...`).
+`GEMINI_API_KEY` is an alias for `GOOGLE_API_KEY`.
+
+Calls use the Gemini **Interactions** REST API (`x-goog-api-key`). The
+legacy `google.generativeai` SDK is not used.
+
+---
+
+## Ollama (8GB RAM) — detail
+
+Default model **`llama3.2:3b`**: ~2GB download, ~3–4GB RAM, `num_ctx=2048`.
+
+```powershell
+winget install Ollama.Ollama
+ollama pull llama3.2:3b
+py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
+```
+
+Success looks like:
+
+```text
+Using Ollama model llama3.2:3b (8GB RAM profile, num_ctx=2048).
+```
 
 | Env var | Default | Meaning |
 |---|---|---|
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server |
-| `OLLAMA_MODEL` | `llama3.2:3b` | Model tag (keep 1B–3B on 8GB RAM) |
-| `OLLAMA_NUM_CTX` | `2048` | Context length (lower = less RAM) |
-| `LLM_PROVIDER` | (auto) | Force `ollama` or `local` (keyword heuristic) |
+| `OLLAMA_MODEL` | `llama3.2:3b` | Keep 1B–3B on 8GB RAM |
+| `OLLAMA_NUM_CTX` | `2048` | Lower = less RAM |
+| `LLM_PROVIDER` | (auto) | `ollama` or `local` |
 
-If Ollama is not running, the client prints `ollama pull llama3.2:3b` and
-falls back to the keyword heuristic so eval still completes.
+---
 
 ## Repo structure
 
 ```
 src/
-  config.py       brand, model, intent taxonomy, thresholds — the one file to edit to retarget
-  data_prep.py    raw twcs.csv -> reconstructed (customer, brand_reply) pairs
-  llm_client.py   Gemini Interactions REST + retry + key failover
-  intents.py      LLM-based intent classification
-  retrieval.py    TF-IDF precedent search (the "grounding" step)
+  config.py       brand, model, intent taxonomy, thresholds
+  data_prep.py    raw twcs.csv → (customer, brand_reply) pairs
+  llm_client.py   Gemini → xAI → Ollama → heuristic
+  intents.py      intent classification
+  retrieval.py    TF-IDF precedent search
   reply_gen.py    grounded reply drafting
-  escalation.py   auto-handle vs escalate decision logic
-  pipeline.py     wires the above into one end-to-end call
+  escalation.py   auto-handle vs escalate
+  pipeline.py     one end-to-end call
   baselines.py    trivial + simple-keyword baselines
 eval/
-  golden_set_builder.py   filtered + coverage-stratified sampling for hand-labeling
-  label_quality_check.py  post-labeling sanity checks (balance, validity, consistency)
-  split_golden_set.py     dev/test split (stratified by intent)
-  metrics.py              intent/escalation automated metrics
-  stats.py                bootstrap CIs + paired significance testing
-  hallucination_check.py  automated (non-LLM) unsupported-claim detector
-  ablation.py              with-retrieval vs without-retrieval comparison
-  llm_judge.py            LLM-as-judge rubric + human-agreement scoring
-  judge_calibration.py    workflow script for the human-agreement check
-  run_eval.py             runs everything on test split, produces headline numbers
-tests/
-  test_escalation.py, test_baselines.py, test_data_prep.py,
-  test_retrieval.py, test_hallucination_check.py, test_stats.py,
-  test_llm_client.py
-  — 68 tests, no API key or dataset required (`make test`)
-Makefile            one command per pipeline stage
-REPORT.md           problem framing, results, failure analysis (assignment deliverable)
-DECISION_LOG.md     non-obvious decisions and why (assignment deliverable)
-LABELING_GUIDE.md   golden-set sampling methodology + labeling decision rules (assignment deliverable)
+  golden_set_builder.py   stratified sampling for labeling
+  label_quality_check.py  post-labeling sanity checks
+  split_golden_set.py     dev/test split
+  metrics.py / stats.py
+  hallucination_check.py
+  ablation.py
+  llm_judge.py / judge_calibration.py
+  run_eval.py             test-split headline numbers
+tests/                    68 tests, no API key or dataset (`py -m pytest tests/ -v`)
+Makefile
+REPORT.md / DECISION_LOG.md / LABELING_GUIDE.md
 ```
 
-## What this does NOT do (scope cuts — see REPORT.md for the full "what I chose not to build")
+## What this does NOT do
 
 - No multi-turn conversation state (each message scored independently)
-- No neural embedding retrieval (TF-IDF only — justified with an ablation, see DECISION_LOG.md)
-- No fine-tuning — pure prompting against Gemini
-- Not run against the full 3M-row dataset — subsampled per assignment instructions
-- The automated hallucination checker is a numeric-claim proxy, not a full factuality checker — see its docstring for what it does and doesn't catch
-#   H i v e r - S u p p o r t - a g e n t  
- 
+- No neural embedding retrieval (TF-IDF only — see ablation / DECISION_LOG.md)
+- No fine-tuning
+- Not run against the full 3M-row dataset
+- The automated hallucination checker is a numeric-claim proxy, not full factuality
