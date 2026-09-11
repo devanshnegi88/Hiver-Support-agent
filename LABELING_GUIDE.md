@@ -1,5 +1,10 @@
 # Golden Set — Sampling & Labeling Guide
 
+**Who labeled:** one annotator (the author), using this guide. There is **no
+independent second labeler**. Do not treat these 200 rows as dual-annotated
+ground truth. Labels were assigned by reading each customer message (and
+notes where needed), not by copying the keyword sampler's guess.
+
 This is the "short note on how you sampled and labeled them" the assignment
 asks for, expanded enough to actually defend the choices live.
 

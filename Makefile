@@ -29,16 +29,12 @@ split:
 dev-ablation:
 	python eval/ablation.py
 
-# Headline numbers, assignment 15-minute reproduction path
 eval:
+	python eval/leakage_check.py
 	python eval/run_eval.py
 
-# All 140 test examples + LLM judge (can exceed 15 min)
 eval-full:
 	python eval/run_eval.py --full
-
-eval-fast:
-	python eval/run_eval.py --fast
 
 calibrate-sample:
 	python eval/judge_calibration.py --step sample --n 35

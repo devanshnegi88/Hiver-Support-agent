@@ -46,6 +46,13 @@ _working_auth_mode: str | None = None
 _active_backend: str | None = None  # gemini | xai | ollama | heuristic
 _ollama_model: str | None = None
 
+
+def get_active_backend() -> str:
+    """Which generator actually answered the last call. Never infer from README."""
+    if os.environ.get("LLM_PROVIDER", "").lower() == "local":
+        return "heuristic"
+    return _active_backend or "heuristic"
+
 _PERMANENT_KEY_MARKERS = (
     "api_key_invalid",
     "api key expired",

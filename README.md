@@ -42,41 +42,197 @@ the path that works with no cloud credits.
 
 ---
 
-## Reproduce headline results (under 15 minutes)
+## FAST evaluation (under 15 minutes) — smoke / reproducibility
 
-Graders: this is the path the assignment asks for. No Kaggle download and
-no API key required. Uses the checked-in golden set + `threads.parquet`.
+This is **not** LLM-as-judge quality evaluation. It proves the pipeline
+runs, leakage checks pass, and automated intent/escalation metrics exist.
+
+No Kaggle download. No API key. Uses checked-in `data/threads.parquet`.
+
+```bash
+git clone https://github.com/devanshnegi88/Hiver-Support-agent.git
+cd Hiver-Support-agent
+python -m pip install -r requirements.txt
+python -m pytest tests/ -q
+python eval/leakage_check.py
+python eval/run_eval.py
+```
+
+Writes `results/quick_results.json`. Judge type is **heuristic**. If no LLM
+is up, the agent row is named `agent_keyword_fallback`.
+
+Timed locally at ~30 seconds with `LLM_PROVIDER=local`.
+
+---
+
+## Run with Ollama (no cloud API key, 8GB RAM)
+
+Use this when Gemini/xAI keys are missing, blocked, or out of credits.
+Model: **`llama3.2:3b`** (~2GB download, ~3–4GB RAM). Do **not** pull 7B/8B
+models on 8GB RAM.
+
+### 1. Install Ollama (Windows)
 
 ```powershell
-cd hiver-support-agent
-py -m pip install -r requirements.txt
-py -m pytest tests/ -q
+winget install Ollama.Ollama
+```
+
+Close **all** PowerShell/terminal windows, then open a new one.
+
+macOS: `brew install ollama`  
+Linux: see https://ollama.com/download
+
+### 2. Start Ollama and pull the 3B model
+
+```powershell
+ollama serve
+```
+
+Leave that window open (or let the Windows service run). In a **second**
+terminal:
+
+```powershell
+ollama pull llama3.2:3b
+ollama list
+```
+
+You should see `llama3.2:3b`. Probe the server:
+
+```powershell
+curl http://127.0.0.1:11434/api/tags
+```
+
+If that fails, Ollama is not running — go back to `ollama serve`.
+
+### 3. Smoke-test the agent on one message
+
+```powershell
+cd path\to\Hiver-Support-agent
+$env:LLM_PROVIDER = "ollama"
+$env:OLLAMA_MODEL = "llama3.2:3b"
+py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
+```
+
+Linux/mac:
+
+```bash
+export LLM_PROVIDER=ollama
+export OLLAMA_MODEL=llama3.2:3b
+python src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
+```
+
+Success looks like:
+
+```text
+Using Ollama model llama3.2:3b (8GB RAM profile, num_ctx=2048).
+```
+
+then JSON with `intent`, `draft_reply`, `escalate`, `escalation_reason`.
+The first call can take 30–60s while the model loads.
+
+If you see `agent_keyword_fallback` or `using keyword heuristic backend`,
+Ollama was not reached — check `ollama serve` and `ollama list`.
+
+### 4. FAST eval with Ollama (still under 15 minutes if already pulled)
+
+```powershell
+$env:LLM_PROVIDER = "ollama"
 py eval/run_eval.py
 ```
 
-That eval is **30 stratified test examples** and a **heuristic judge**, so it
-finishes in well under 15 minutes (typically 1–3 minutes; ~30–60s with
-`LLM_PROVIDER=local`). It prints the comparison table and writes
-`results/eval_results.json` — those are the headline numbers in `REPORT.md`.
+Check `results/quick_results.json` → `"agent_backend": "ollama"`.
+If it says `"heuristic"`, Ollama did not answer.
+
+### 5. FULL eval with Ollama (quality; 20–60+ min on CPU)
+
+```powershell
+$env:LLM_PROVIDER = "ollama"
+py eval/run_eval.py --full
+```
+
+Writes `results/full_results.json`. Expect `"agent_backend": "ollama"` and
+`"judge_type": "llm"`.
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `LLM_PROVIDER` | (auto) | Set to `ollama` to skip cloud APIs |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server |
+| `OLLAMA_MODEL` | `llama3.2:3b` | Keep 1B–3B on 8GB RAM |
+| `OLLAMA_NUM_CTX` | `2048` | Lower = less RAM |
+
+---
+
+## Run with Gemini or xAI API keys
+
+Use this when you have a working cloud key. `$env:...` lasts **only in this
+PowerShell window**. `export` does nothing in PowerShell.
+
+### Gemini (preferred)
+
+1. Create a key at https://aistudio.google.com/apikey  
+   Valid keys start with `AIza` or `AQ.` — not a `gcloud` token (`ya29`).
+2. In the **same** terminal you will run eval:
+
+```powershell
+cd path\to\Hiver-Support-agent
+$env:GOOGLE_API_KEY = "paste-your-gemini-key-here"
+# optional backups if the first key dies:
+$env:GOOGLE_API_KEY_2 = "backup-key-2"
+```
+
+Linux/mac: `export GOOGLE_API_KEY="paste-your-gemini-key-here"`
+
+3. Smoke-test:
 
 ```powershell
 py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
 ```
 
-Optional, still inside 15 minutes if Ollama is already pulled:
+You want a log line like `Gemini auth working` or `Gemini client: 1 key(s) loaded`.
+If you see `API_KEY_SERVICE_BLOCKED` or `ACCESS_TOKEN_TYPE_UNSUPPORTED`,
+that key cannot call Gemini — use Ollama or xAI instead.
+
+4. FAST then FULL:
 
 ```powershell
-ollama pull llama3.2:3b
-$env:LLM_PROVIDER = "ollama"
 py eval/run_eval.py
+py eval/run_eval.py --full
 ```
 
-Judge–human agreement is already computed (`results/judge_agreement.json`).
-To regenerate: fill `data/judge_calibration_sample.csv` (already filled)
-then `py eval/judge_calibration.py --step compare`.
+### xAI / Grok (if Gemini is blocked)
 
-**Not in the 15-minute budget:** `py eval/run_eval.py --full` (all 140
-examples + LLM-as-judge) and `eval/ablation.py`.
+1. Create a key at https://console.x.ai (needs credits).
+2.
+
+```powershell
+$env:XAI_API_KEY = "paste-your-xai-key-here"
+py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
+py eval/run_eval.py --full
+```
+
+Linux/mac: `export XAI_API_KEY="paste-your-xai-key-here"`
+
+If xAI returns 403 out of credits, the client falls through to Ollama, then
+keywords. Check `"agent_backend"` in the results JSON — do not report
+keyword fallback as an LLM agent.
+
+### Auto order (if you do not set `LLM_PROVIDER`)
+
+1. Gemini, if `GOOGLE_API_KEY` / `GEMINI_API_KEY` is set  
+2. xAI, if `XAI_API_KEY` is set  
+3. Ollama on `127.0.0.1:11434`  
+4. Keyword heuristic (labeled `agent_keyword_fallback`)
+
+---
+
+Judge–human agreement (already computed): `results/judge_agreement.json`.
+Regenerate after a real LLM run:
+
+```powershell
+py eval/judge_calibration.py --step compare --llm-judge
+```
+
+(`--llm-judge` needs a live Gemini/xAI/Ollama backend.)
 
 ---
 
@@ -116,54 +272,17 @@ py -m pip install -r requirements.txt
 py -m pytest tests/ -v
 ```
 
-70 tests. This is the fastest check that escalation, retrieval, baselines,
+78 tests. This is the fastest check that escalation, retrieval, baselines,
 stats, hallucination checks, and key-failover logic are correct.
 
 ### Step 3 — Choose an LLM
 
-**Option A — Gemini (preferred for reported numbers)**
+Follow one of the full write-ups above:
 
-```powershell
-$env:GOOGLE_API_KEY = "your-gemini-api-key"
-```
+- **Ollama:** “Run with Ollama (no cloud API key, 8GB RAM)”
+- **Gemini / xAI:** “Run with Gemini or xAI API keys”
 
-Optional backups (auto-switch if the first key dies):
-
-```powershell
-$env:GOOGLE_API_KEY_2 = "backup-key-2"
-$env:GOOGLE_API_KEY_3 = "backup-key-3"
-```
-
-**Option B — xAI (if Gemini is blocked or out of quota)**
-
-```powershell
-$env:XAI_API_KEY = "your-xai-key"
-```
-
-**Option C — Ollama on 8GB RAM (no cloud key)**
-
-```powershell
-winget install Ollama.Ollama
-```
-
-Close and reopen the terminal, then:
-
-```powershell
-ollama pull llama3.2:3b
-```
-
-Ollama serves `http://127.0.0.1:11434` in the background. Do **not** pull
-7B/8B models on 8GB RAM.
-
-Force a backend:
-
-```powershell
-$env:LLM_PROVIDER = "ollama"   # skip cloud, use Ollama
-$env:LLM_PROVIDER = "local"    # keyword heuristic only (no LLM)
-```
-
-`$env:...` lasts for **this PowerShell window only**. Keep using the same
-window for later steps. `export` does nothing in PowerShell.
+Keep using the **same** terminal after you set `$env:...` or `export`.
 
 ### Step 4 — Get the data
 
@@ -327,60 +446,20 @@ On Windows without `make`, use the `py ...` commands in the steps above.
 
 ---
 
-## Gemini keys (detail)
+## LLM troubleshooting
 
-`eval/run_eval.py` makes hundreds of LLM calls. `src/llm_client.py` fails
-over on the **same call** so you do not restart.
-
-```powershell
-$env:GOOGLE_API_KEY = "key-1"
-$env:GOOGLE_API_KEY_2 = "key-2"
-$env:GOOGLE_API_KEYS = "key-1,key-2,key-3"
-```
+Install and run steps: **Run with Ollama** and **Run with Gemini or xAI API keys** above.
 
 | Error | What happens |
 |---|---|
-| Expired / invalid key | Retired for this process; next key used immediately |
-| 429 / quota | Rotate to next key; keep the old one (limits recover) |
+| Expired / invalid Gemini key | Retired; next `GOOGLE_API_KEY_2`… is used |
+| 429 / quota | Rotate keys; old key stays in the pool |
 | `API_KEY_SERVICE_BLOCKED` / `ACCESS_TOKEN_TYPE_UNSUPPORTED` | Skip Gemini; try xAI, then Ollama |
 | xAI 403 out of credits | Skip xAI; try Ollama |
-| Ollama not running | Keyword heuristic so eval still finishes |
-| Model 404 | Not a key failure — pin `GEN_MODEL` in `src/config.py` (currently `gemini-3.6-flash`) |
+| Ollama not running | Keyword heuristic; results JSON says `agent_keyword_fallback` |
+| Model 404 | Pin `GEN_MODEL` in `src/config.py` (`gemini-3.6-flash`) |
 
-Keys themselves are never logged. Startup prints the *kind* only, e.g.
-`Gemini client: 1 key(s) loaded (key 1=auth AQ.).`
-
-A valid Gemini key from [AI Studio](https://aistudio.google.com/apikey)
-starts with `AIza` or `AQ.` — not a `gcloud` token (`ya29...`).
-`GEMINI_API_KEY` is an alias for `GOOGLE_API_KEY`.
-
-Calls use the Gemini **Interactions** REST API (`x-goog-api-key`). The
-legacy `google.generativeai` SDK is not used.
-
----
-
-## Ollama (8GB RAM) — detail
-
-Default model **`llama3.2:3b`**: ~2GB download, ~3–4GB RAM, `num_ctx=2048`.
-
-```powershell
-winget install Ollama.Ollama
-ollama pull llama3.2:3b
-py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
-```
-
-Success looks like:
-
-```text
-Using Ollama model llama3.2:3b (8GB RAM profile, num_ctx=2048).
-```
-
-| Env var | Default | Meaning |
-|---|---|---|
-| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server |
-| `OLLAMA_MODEL` | `llama3.2:3b` | Keep 1B–3B on 8GB RAM |
-| `OLLAMA_NUM_CTX` | `2048` | Lower = less RAM |
-| `LLM_PROVIDER` | (auto) | `ollama` or `local` |
+Always read `"agent_backend"` and `"judge_type"` in the results JSON before quoting numbers.
 
 ---
 

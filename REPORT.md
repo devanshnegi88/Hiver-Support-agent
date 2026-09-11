@@ -1,15 +1,20 @@
 # Report — AI Support Agent for AmazonHelp
 
-**Reproduce these numbers (under 15 minutes, no API key):**
+**FAST (15-minute) command — smoke metrics, not LLM-as-judge:**
 
 ```text
 pip install -r requirements.txt
 python eval/run_eval.py
 ```
 
-Writes `results/eval_results.json`. Default eval is 30 stratified test
-examples and a heuristic judge. That is the assignment’s 15-minute path.
-`--full` (140 examples + LLM judge) can exceed 15 minutes.
+Writes `results/quick_results.json`. n=30, **heuristic judge**, backend
+recorded in the JSON. `--full` is the quality run (140 rows, LLM judge if
+a model answers).
+
+**Leakage:** gold CSV IDs were `int64` and parquet IDs were strings, so
+`exclude_id` never matched and TF-IDF could retrieve the same tweet’s own
+historical reply. Eval now drops every golden ID from the retrieval index
+and fails `eval/leakage_check.py` if a self-hit remains.
 
 ---
 
@@ -64,31 +69,34 @@ draft only if a precedent exists. LLM path is Gemini → xAI → Ollama 3B →
 keywords. On this reproduction the cloud keys failed, so **intent is the
 keyword path plus a couple of extra delivery patterns**.
 
-All figures: held-out **n = 30** stratified test rows (15-minute command).
+**FULL held-out test (n=140), backend=`heuristic` (no LLM answered).**
+FAST n=30 is in `results/quick_results.json`. These FULL numbers are
+`results/full_results.json`. Judge type: heuristic (not LLM-as-judge).
 95% bootstrap CIs.
 
-| System | Intent acc [95% CI] | Macro-F1 | Esc. precision | Esc. recall | Hallucination-proxy |
-|---|---|---|---|---|---|
-| Trivial | 0.10 [0.00, 0.23] | 0.02 | 0.00 | 0.00 | 0.00 |
-| Simple keyword | **0.63 [0.47, 0.80]** | 0.60 | 0.56 | 0.31 | 0.00 |
-| **Agent** | **0.63 [0.47, 0.80]** | 0.60 | 0.53 | **1.00** | 0.00 |
+| System | Intent acc [95% CI] | Macro-F1 | Esc. P | Esc. R | Auto-handle | False-auto |
+|---|---|---|---|---|---|---|
+| Trivial | 0.17 [0.11, 0.24] | 0.03 | 0.00 | 0.00 | 1.00 | 0.59 |
+| Simple keyword | **0.66 [0.59, 0.74]** | 0.62 | 0.67 | 0.39 | 0.66 | 0.36 |
+| **agent_keyword_fallback** | **0.66 [0.59, 0.74]** | 0.62 | 0.59 | **1.00** | **0.00** | **0.00** |
 
 Heuristic judge scores (grounded / relevant / tone / actionable) are ~4.0
 on all three systems. They are **not** LLM-as-judge quality. Do not use
 them as a quality claim (section 4).
 
-**Paired bootstrap, same 30 rows:**
+**Paired bootstrap, same 140 rows:**
 
-- Agent vs trivial, intent acc: **+0.53**, CI [+0.30, +0.73], p = 0.000
+- Fallback-agent vs trivial, intent acc: **+0.49**, CI [+0.39, +0.59], p = 0.000
   (significant).
-- Agent vs simple keyword, intent acc: **+0.00**, CI [+0.00, +0.00], p = 1.000
-  (**not significant**).
+- Fallback-agent vs simple keyword, intent acc: **+0.00**, p = 1.000
+  (**not significant** — same classifier).
 
-The agent **does not beat keywords on intent**. It **does** escalate more:
-recall 1.00 vs 0.31, because keyword confidence 0.6 sits under the 0.65
-auto-handle bar, and gold complaints/billing still hit
-`ALWAYS_ESCALATE_INTENTS` when the intent string is right. That is a
-conservative router, not a better classifier.
+The keyword-fallback agent **does not beat keywords on intent** (identical
+classifier). It **does** escalate more: recall 1.00 vs 0.39, auto-handle
+rate 0.00. False auto-handle rate is 0.00 (no gold-escalate ticket was
+auto-sent). That is a conservative router, not a better classifier. No
+LLM-agent numbers exist in this repo until `--full` is run with Ollama or
+a live API key.
 
 **Ablation** (`eval/ablation.py`) needs a live LLM on the 60-row dev split
 and is outside the 15-minute path.

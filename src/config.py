@@ -99,7 +99,10 @@ INTENTS = [
 
 # ---- Escalation ------------------------------------------------------------
 # Intents that should never be auto-closed regardless of model confidence.
-ALWAYS_ESCALATE_INTENTS = {"complaint_escalation", "billing_or_charge_dispute"}
+ALWAYS_ESCALATE_INTENTS = {
+    "complaint_escalation",
+    "billing_or_charge_dispute",
+}
 
 # Below this confidence, escalate regardless of intent.
 MIN_AUTO_HANDLE_CONFIDENCE = 0.65

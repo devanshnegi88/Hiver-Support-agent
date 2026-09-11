@@ -32,7 +32,12 @@ def run_agent(message: str, index: PrecedentIndex, brand: str = BRAND_HANDLE,
     hits = index.search(message, top_k=3, exclude_id=exclude_id)
     top_sim = hits[0].similarity if hits else 0.0
 
-    decision = decide(intent_result["intent"], intent_result["confidence"], top_sim)
+    decision = decide(
+        intent_result["intent"],
+        intent_result["confidence"],
+        top_sim,
+        message=message,
+    )
 
     # Only spend a generation call drafting a reply if we're not immediately
     # escalating for "no grounding" — still draft for other escalation

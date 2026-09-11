@@ -1,21 +1,32 @@
 """
-Evaluation harness. Default run reproduces headline results in **under 15
-minutes** (assignment requirement): 30 stratified test examples + heuristic
-judge. `--full` is the 140-example LLM-judge run and can exceed 15 minutes.
+Evaluation harness.
 
-Usage:
-    python eval/run_eval.py              # default, <15 min, writes eval_results.json
-    python eval/run_eval.py --full       # all 140 + LLM judge, writes eval_results_full.json
+  python eval/run_eval.py           # FAST / <15 min: 30 test rows, heuristic judge
+  python eval/run_eval.py --full    # FULL: all 140 test rows, LLM judge if a backend exists
+
+FAST is a smoke/repro path. It is NOT an LLM-as-judge quality evaluation.
+FULL is the quality evaluation. If no LLM is available, FULL still runs but
+records judge_type=heuristic and backend=heuristic — it does not pretend
+otherwise.
 """
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from config import GOLDEN_TEST_CSV, RESULTS_DIR, INTENTS, BRAND_HANDLE  # noqa: E402
+from config import (  # noqa: E402
+    BRAND_HANDLE,
+    GOLDEN_SET_CSV,
+    GOLDEN_TEST_CSV,
+    INTENTS,
+    MIN_AUTO_HANDLE_CONFIDENCE,
+    MIN_GROUNDING_SIMILARITY,
+    RESULTS_DIR,
+)
 from pipeline import run_agent  # noqa: E402
 from retrieval import PrecedentIndex  # noqa: E402
 from baselines import trivial_predict, simple_predict  # noqa: E402
@@ -23,6 +34,8 @@ from metrics import intent_metrics, escalation_metrics  # noqa: E402
 from llm_judge import judge_reply  # noqa: E402
 from hallucination_check import hallucination_rate  # noqa: E402
 from stats import bootstrap_ci, paired_bootstrap_test  # noqa: E402
+from llm_client import get_active_backend  # noqa: E402
+from leakage_check import run_leakage_checks  # noqa: E402
 
 
 def load_test_split():
@@ -63,12 +76,14 @@ def run_system(name: str, predict_fn, golden: pd.DataFrame, index: PrecedentInde
     for _, row in golden.iterrows():
         msg = row["customer_message"]
 
-        if name == "agent":
+        if name.startswith("agent"):
             result = run_agent(msg, index, brand=BRAND_HANDLE, exclude_id=row["customer_tweet_id"])
             intent_pred, escalate_pred, reply = result.intent, result.escalate, result.draft_reply
             hits = index.search(msg, top_k=3, exclude_id=row["customer_tweet_id"])
             precedent_texts = [h.brand_reply for h in hits]
-            precedents_text_for_judge = f"(top similarity {result.top_precedent_similarity:.2f})"
+            precedents_text_for_judge = "\n".join(
+                f"[sim={h.similarity:.2f}] {h.brand_reply}" for h in hits
+            ) or "(no precedent retrieved)"
         else:
             result = predict_fn(msg)
             intent_pred, escalate_pred, reply = result["intent"], result["escalate"], result["reply"]
@@ -106,7 +121,11 @@ def run_system(name: str, predict_fn, golden: pd.DataFrame, index: PrecedentInde
         "intent_macro_f1": im["macro_f1"],
         "escalation_precision": em["precision_escalate"],
         "escalation_recall": em["recall_escalate"],
+        "escalation_f1": em["f1_escalate"],
         "escalation_false_negative_rate": em["false_negative_rate"],
+        "auto_handle_rate": em["auto_handle_rate"],
+        "false_auto_handle_rate": em["false_auto_handle_rate"],
+        "per_intent": im.get("per_intent", {}),
         "escalation_decision_accuracy_ci": [ci_escalate_acc["ci_low"], ci_escalate_acc["ci_high"]],
         "judge_scores": {axis: judge_cis[axis]["mean"] for axis in judge_cis},
         "judge_scores_ci": {axis: [judge_cis[axis]["ci_low"], judge_cis[axis]["ci_high"]] for axis in judge_cis},
@@ -143,74 +162,99 @@ def main():
     parser.add_argument(
         "--full",
         action="store_true",
-        help="All 140 test examples + LLM-as-judge. Can exceed 15 minutes.",
+        help="FULL quality eval: all 140 test examples; LLM judge if a backend exists.",
+    )
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="FAST smoke eval: 30 test rows + heuristic judge (default).",
     )
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="Alias for the default <15 min run (30 examples, heuristic judge).",
+        help="Alias for --quick.",
     )
     parser.add_argument("--n", type=int, default=None, help="Cap test examples.")
-    parser.add_argument(
-        "--heuristic-judge",
-        action="store_true",
-        help="Skip LLM-as-judge. Default unless --full or --llm-judge.",
-    )
-    parser.add_argument(
-        "--llm-judge",
-        action="store_true",
-        help="Force LLM-as-judge even on the 15-minute subsample.",
-    )
+    parser.add_argument("--heuristic-judge", action="store_true")
+    parser.add_argument("--llm-judge", action="store_true")
     args = parser.parse_args()
 
-    golden = load_test_split()
-    use_full = args.full and not args.fast
+    golden_all = load_test_split()
+    use_full = args.full and not args.fast and not args.quick
     heuristic = (not args.llm_judge) and (args.heuristic_judge or not use_full)
     n = args.n
     if n is None and not use_full:
         n = 30
-    if n is not None:
-        golden = stratified_subsample(golden, n)
+    golden = stratified_subsample(golden_all, n) if n is not None else golden_all
 
-    index = PrecedentIndex.load()
+    all_gold = pd.read_csv(GOLDEN_SET_CSV)
+    index = PrecedentIndex.load().without_ids(all_gold["customer_tweet_id"])
+    run_leakage_checks(index, all_gold)
 
-    mode = "FULL" if use_full else "15-MIN"
-    judge_kind = "heuristic judge" if heuristic else "LLM judge"
+    # Probe once so we do not advertise an LLM judge when only keywords exist.
+    from llm_client import generate as _probe  # noqa: PLC0415
+    try:
+        _probe("ping", model="probe", max_retries=1)
+    except Exception:
+        pass
+    probed = get_active_backend()
+    if probed == "heuristic":
+        heuristic = True
+
+    mode = "FULL" if use_full else "QUICK"
+    judge_kind = "heuristic" if heuristic else "llm"
     print(
-        f"[{mode}] Running on {len(golden)} TEST-split examples "
-        f"({judge_kind}; held out from threshold tuning)..."
+        f"[{mode}] n={len(golden)} TEST examples | judge={judge_kind} "
+        f"| FAST is smoke only; FULL is quality eval."
     )
-    if not use_full:
-        print("  Default path is the assignment's <15 min reproduction. "
-              "Use --full for all 140 examples with the LLM judge.")
+    if heuristic:
+        print("  NOTE: heuristic judge is NOT LLM-as-judge. Do not report these "
+              "axis scores as LLM quality.")
 
     results = []
     print("  trivial baseline...")
     results.append(run_system("trivial_baseline", trivial_predict, golden, heuristic_judge=heuristic))
     print("  simple keyword baseline...")
     results.append(run_system("simple_keyword_baseline", simple_predict, golden, heuristic_judge=heuristic))
-    print("  agent (full pipeline)...")
+    print("  agent (retrieval + LLM-or-fallback)...")
     agent_result = run_system("agent", None, golden, index=index, heuristic_judge=heuristic)
+    backend = get_active_backend()
+    if backend == "heuristic":
+        agent_result["system"] = "agent_keyword_fallback"
+        print("  WARNING: no LLM answered; agent used the keyword/heuristic backend. "
+              "This is NOT an LLM-agent result.")
+    else:
+        print(f"  Agent LLM backend: {backend}")
     results.append(agent_result)
 
-    sig = significance_vs_baselines(agent_result, [r for r in results if r["system"] != "agent"])
+    sig = significance_vs_baselines(
+        agent_result, [r for r in results if not r["system"].startswith("agent")]
+    )
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     clean_results = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
     out = {
         "mode": mode,
         "n_examples": len(golden),
-        "heuristic_judge": heuristic,
+        "judge_type": judge_kind,
+        "agent_backend": backend,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "thresholds": {
+            "min_auto_handle_confidence": MIN_AUTO_HANDLE_CONFIDENCE,
+            "min_grounding_similarity": MIN_GROUNDING_SIMILARITY,
+        },
+        "retrieval": "tfidf_cosine_excluding_all_golden_ids",
         "per_system": clean_results,
         "significance_vs_baselines": sig,
     }
-    out_name = "eval_results_full.json" if use_full else "eval_results.json"
+    out_name = "full_results.json" if use_full else "quick_results.json"
     with open(RESULTS_DIR / out_name, "w") as f:
         json.dump(out, f, indent=2)
 
     df = pd.DataFrame(clean_results).drop(
         columns=["confusion_matrix", "labels_order", "hallucination_flagged_examples_sample",
-                 "judge_scores", "judge_scores_ci"]
+                 "judge_scores", "judge_scores_ci", "per_intent"],
+        errors="ignore",
     )
     print("\n" + df.to_string(index=False))
 
@@ -221,7 +265,11 @@ def main():
               f"CI=[{ia['ci_low']:+.3f},{ia['ci_high']:+.3f}] p={ia['p_value']:.3f} "
               f"({'significant' if ia['significant_at_0.05'] else 'NOT significant'})")
 
-    print(f"\nFull results written to {RESULTS_DIR / out_name}")
+    print(f"\nResults written to {RESULTS_DIR / out_name}")
+    if not use_full:
+        # Alias used by README / older docs.
+        with open(RESULTS_DIR / "eval_results.json", "w") as f:
+            json.dump(out, f, indent=2)
 
 
 if __name__ == "__main__":

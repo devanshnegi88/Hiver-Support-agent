@@ -22,7 +22,7 @@ Non-obvious calls, and why. (15 items — assignment asks for 10–15.)
 
 10. **Golden set is stratified (length tercile × keyword coverage bucket), then filtered for near-duplicates and <15-char noise, then quality-checked before split.** Random sampling would be almost all short delivery tweets. The keyword bucket is a sampling tool, never the label. `label_quality_check.py` is a gate so gold and `ALWAYS_ESCALATE_INTENTS` cannot silently disagree.
 
-11. **Dev/test split is stratified by intent (60/140); `run_eval.py` default never tunes on test.** Thresholds belong on dev. Reporting on the same rows you used to pick 0.65 would be the usual take-home self-deception. `exclude_id` also blocks a gold example from retrieving *its own* historical reply.
+11. **Dev/test split is stratified by intent (60/140); eval never tunes on test.** Gold tweet IDs are `int64` in CSV and strings in parquet — comparing them with `==` silently failed, so TF-IDF retrieved the example's own historical reply (sim≈1). Fix: normalize IDs to `str`, drop **all** golden IDs from the eval index, and fail `eval/leakage_check.py` if a self-hit remains.
 
 12. **Judge scores four axes (grounded / relevant / tone / actionable), not one “quality” number.** Failure analysis needs *why*. Human calibration (`judge_calibration.py`) is a two-step script that makes you score before you see the judge — otherwise “agreement” is just anchoring.
 
@@ -30,4 +30,4 @@ Non-obvious calls, and why. (15 items — assignment asks for 10–15.)
 
 14. **Every headline metric has a bootstrap 95% CI; agent vs baseline is a paired bootstrap test; a non-LLM numeric-claim checker runs next to the judge.** n=30 (15-minute path) or n=140 (`--full`) is small. A 6-point “win” without a p-value is noise. The regex hallucination proxy exists because an all-LLM eval stack cannot fully audit itself.
 
-15. **Default eval is the assignment’s <15 minute reproduction (30 stratified test rows, heuristic judge, checked-in parquet + gold).** Gemini 2.0-flash is dead; 3.6-flash plus the old Python SDKs 401’d on `AQ.` keys (`ACCESS_TOKEN_TYPE_UNSUPPORTED` / `API_KEY_SERVICE_BLOCKED`). The client is plain HTTPS: Gemini → xAI → Ollama `llama3.2:3b` (8GB RAM, `num_ctx=2048`) → keyword heuristic. That chain is infrastructure so graders can reproduce numbers, not a claim that keywords equal Gemini. `--full` is 140 examples + LLM judge and is allowed to exceed 15 minutes.
+15. **FAST vs FULL eval, and an honest backend label.** `python eval/run_eval.py` is FAST: 30 test rows, heuristic judge, under 15 minutes, **not** LLM-as-judge. `--full` is 140 rows and uses an LLM judge when a backend answers. If Gemini/xAI/Ollama all fail, the “agent” is recorded as `agent_keyword_fallback` — never as an LLM agent. Headline numbers must name the backend.

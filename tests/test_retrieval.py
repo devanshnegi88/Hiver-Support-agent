@@ -29,10 +29,22 @@ def test_search_respects_top_k():
 
 def test_search_excludes_given_id_to_prevent_self_match_leakage():
     index = _make_index()
-    # This query is near-identical to row "1" — without exclude_id it would
-    # trivially retrieve its own gold answer during eval.
     hits = index.search("my order is late and never arrived", top_k=1, exclude_id="1")
     assert hits[0].customer_message != "my order is late and never arrived"
+
+
+def test_exclude_id_matches_int_against_string_column():
+    """Regression: pandas reads gold IDs as int64, parquet stores them as str."""
+    index = _make_index()
+    hits = index.search("my order is late and never arrived", top_k=1, exclude_id=1)
+    assert hits[0].customer_tweet_id != "1"
+    assert hits[0].customer_message != "my order is late and never arrived"
+
+
+def test_without_ids_drops_gold_rows_from_index():
+    index = _make_index().without_ids({1, "1"})
+    hits = index.search("my order is late and never arrived", top_k=3)
+    assert all(h.customer_tweet_id != "1" for h in hits)
 
 
 def test_similarity_scores_are_between_zero_and_one():
