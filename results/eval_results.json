@@ -1,0 +1,572 @@
+{
+  "mode": "15-MIN",
+  "n_examples": 30,
+  "heuristic_judge": true,
+  "per_system": [
+    {
+      "system": "trivial_baseline",
+      "n_examples": 30,
+      "intent_accuracy": 0.1,
+      "intent_accuracy_ci": [
+        0.0,
+        0.23333333333333334
+      ],
+      "intent_macro_f1": 0.01818181818181818,
+      "escalation_precision": 0.0,
+      "escalation_recall": 0.0,
+      "escalation_false_negative_rate": 1.0,
+      "escalation_decision_accuracy_ci": [
+        0.3,
+        0.6333333333333333
+      ],
+      "judge_scores": {
+        "grounded": 4.0,
+        "relevant": 4.0,
+        "tone": 4.0,
+        "actionable": 4.0
+      },
+      "judge_scores_ci": {
+        "grounded": [
+          4.0,
+          4.0
+        ],
+        "relevant": [
+          4.0,
+          4.0
+        ],
+        "tone": [
+          4.0,
+          4.0
+        ],
+        "actionable": [
+          4.0,
+          4.0
+        ]
+      },
+      "hallucination_flagged_rate": 0.0,
+      "hallucination_flagged_examples_sample": [],
+      "confusion_matrix": [
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "labels_order": [
+        "delivery_delay_or_missing",
+        "order_cancellation_change",
+        "refund_or_return",
+        "product_defect_or_wrong_item",
+        "account_access_issue",
+        "billing_or_charge_dispute",
+        "general_product_question",
+        "complaint_escalation",
+        "positive_feedback",
+        "other_unclassified"
+      ]
+    },
+    {
+      "system": "simple_keyword_baseline",
+      "n_examples": 30,
+      "intent_accuracy": 0.6333333333333333,
+      "intent_accuracy_ci": [
+        0.4666666666666667,
+        0.8
+      ],
+      "intent_macro_f1": 0.6023809523809522,
+      "escalation_precision": 0.5555555555555556,
+      "escalation_recall": 0.3125,
+      "escalation_false_negative_rate": 0.6875,
+      "escalation_decision_accuracy_ci": [
+        0.3333333333333333,
+        0.6666666666666666
+      ],
+      "judge_scores": {
+        "grounded": 4.0,
+        "relevant": 4.0,
+        "tone": 4.0,
+        "actionable": 3.7333333333333334
+      },
+      "judge_scores_ci": {
+        "grounded": [
+          4.0,
+          4.0
+        ],
+        "relevant": [
+          4.0,
+          4.0
+        ],
+        "tone": [
+          4.0,
+          4.0
+        ],
+        "actionable": [
+          3.566666666666667,
+          3.8666666666666667
+        ]
+      },
+      "hallucination_flagged_rate": 0.0,
+      "hallucination_flagged_examples_sample": [],
+      "confusion_matrix": [
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1
+        ]
+      ],
+      "labels_order": [
+        "delivery_delay_or_missing",
+        "order_cancellation_change",
+        "refund_or_return",
+        "product_defect_or_wrong_item",
+        "account_access_issue",
+        "billing_or_charge_dispute",
+        "general_product_question",
+        "complaint_escalation",
+        "positive_feedback",
+        "other_unclassified"
+      ]
+    },
+    {
+      "system": "agent",
+      "n_examples": 30,
+      "intent_accuracy": 0.6333333333333333,
+      "intent_accuracy_ci": [
+        0.4666666666666667,
+        0.8
+      ],
+      "intent_macro_f1": 0.6023809523809522,
+      "escalation_precision": 0.5333333333333333,
+      "escalation_recall": 1.0,
+      "escalation_false_negative_rate": 0.0,
+      "escalation_decision_accuracy_ci": [
+        0.36666666666666664,
+        0.7
+      ],
+      "judge_scores": {
+        "grounded": 3.933333333333333,
+        "relevant": 4.0,
+        "tone": 3.6666666666666665,
+        "actionable": 3.033333333333333
+      },
+      "judge_scores_ci": {
+        "grounded": [
+          3.8333333333333335,
+          4.0
+        ],
+        "relevant": [
+          4.0,
+          4.0
+        ],
+        "tone": [
+          3.5,
+          3.8333333333333335
+        ],
+        "actionable": [
+          3.0,
+          3.1
+        ]
+      },
+      "hallucination_flagged_rate": 0.0,
+      "hallucination_flagged_examples_sample": [],
+      "confusion_matrix": [
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1
+        ]
+      ],
+      "labels_order": [
+        "delivery_delay_or_missing",
+        "order_cancellation_change",
+        "refund_or_return",
+        "product_defect_or_wrong_item",
+        "account_access_issue",
+        "billing_or_charge_dispute",
+        "general_product_question",
+        "complaint_escalation",
+        "positive_feedback",
+        "other_unclassified"
+      ]
+    }
+  ],
+  "significance_vs_baselines": {
+    "trivial_baseline": {
+      "intent_accuracy_vs_agent": {
+        "mean_diff": 0.5333333333333333,
+        "ci_low": 0.3,
+        "ci_high": 0.7333333333333333,
+        "p_value": 0.0,
+        "significant_at_0.05": true
+      },
+      "judge_relevant_vs_agent": {
+        "mean_diff": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "p_value": 1.0,
+        "significant_at_0.05": false
+      }
+    },
+    "simple_keyword_baseline": {
+      "intent_accuracy_vs_agent": {
+        "mean_diff": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "p_value": 1.0,
+        "significant_at_0.05": false
+      },
+      "judge_relevant_vs_agent": {
+        "mean_diff": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "p_value": 1.0,
+        "significant_at_0.05": false
+      }
+    }
+  }
+}

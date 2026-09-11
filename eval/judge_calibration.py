@@ -13,6 +13,7 @@ Workflow (manual, by design — this is you doing the human labeling):
      -> runs the judge on the same rows and prints agreement stats
 """
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -45,30 +46,56 @@ def step_sample(n: int, seed: int = 7):
     print(f"Wrote {len(rows)} rows to {CALIB_PATH}. Fill in the human_* columns (1-5) by hand.")
 
 
-def step_compare():
+def step_compare(heuristic: bool = True):
     df = pd.read_csv(CALIB_PATH)
     for col in ["human_grounded", "human_relevant", "human_tone", "human_actionable"]:
         if df[col].isna().any() or (df[col] == "").any():
             raise ValueError(f"{col} has unfilled rows — finish human labeling first.")
 
     human_scores = [{
-        "grounded": r.human_grounded, "relevant": r.human_relevant,
-        "tone": r.human_tone, "actionable": r.human_actionable,
+        "grounded": int(r.human_grounded),
+        "relevant": int(r.human_relevant),
+        "tone": int(r.human_tone),
+        "actionable": int(r.human_actionable),
     } for r in df.itertuples()]
 
-    judge_scores = [judge_reply(r.customer_message, r.draft_reply, "(calibration run)")
-                     for r in df.itertuples()]
+    judge_scores = [
+        judge_reply(
+            r.customer_message,
+            r.draft_reply,
+            "(calibration run)",
+            heuristic=heuristic,
+        )
+        for r in df.itertuples()
+    ]
 
     agreement = human_agreement(judge_scores, human_scores)
-    print(pd.DataFrame(agreement).T)
+    table = pd.DataFrame(agreement).T
+    print(table)
+    out = Path(__file__).resolve().parent.parent / "results" / "judge_agreement.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "n": len(df),
+        "heuristic_judge": heuristic,
+        "agreement": agreement,
+    }
+    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"Wrote {out}")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--step", choices=["sample", "compare"], required=True)
     ap.add_argument("--n", type=int, default=35)
+    ap.add_argument(
+        "--heuristic-judge",
+        action="store_true",
+        help="Compare against the heuristic judge (15-minute path). Default for compare.",
+    )
+    ap.add_argument("--llm-judge", action="store_true")
     args = ap.parse_args()
     if args.step == "sample":
         step_sample(args.n)
     else:
-        step_compare()
+        heuristic = not args.llm_judge
+        step_compare(heuristic=heuristic)

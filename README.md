@@ -30,6 +30,16 @@ It tries, in order:
 You only need **one** of Gemini, xAI, or Ollama to run the agent. Ollama is
 the path that works with no cloud credits.
 
+## Assignment deliverables
+
+| Required | Where |
+|---|---|
+| Runnable pipeline, headline results in **under 15 minutes** | This README, `py eval/run_eval.py` |
+| Golden set, 150–250 hand-labeled, sampling note | `data/golden_set.csv` (200 rows); how: `LABELING_GUIDE.md` + Report §1 |
+| Eval harness: automated metrics + LLM-as-judge rubric + **human agreement** | `eval/run_eval.py`, `eval/llm_judge.py`; agreement: `results/judge_agreement.json` (n=35, `eval/judge_calibration.py`) |
+| Report (≤6 pages) | `REPORT.md` — framing, two baselines, 5 failures, misleading headline, next week |
+| Decision log (10–15 bullets) | `DECISION_LOG.md` (15 items) |
+
 ---
 
 ## Reproduce headline results (under 15 minutes)
@@ -61,8 +71,12 @@ $env:LLM_PROVIDER = "ollama"
 py eval/run_eval.py
 ```
 
+Judge–human agreement is already computed (`results/judge_agreement.json`).
+To regenerate: fill `data/judge_calibration_sample.csv` (already filled)
+then `py eval/judge_calibration.py --step compare`.
+
 **Not in the 15-minute budget:** `py eval/run_eval.py --full` (all 140
-examples + LLM-as-judge), `eval/ablation.py`, and judge calibration.
+examples + LLM-as-judge) and `eval/ablation.py`.
 
 ---
 

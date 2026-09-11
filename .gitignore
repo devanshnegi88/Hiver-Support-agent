@@ -1,8 +1,6 @@
 data/twcs.csv
-data/threads.parquet
 data/golden_set_candidates.csv
-data/judge_calibration_sample.csv
-results/
 __pycache__/
 *.pyc
 .env
+.venv/

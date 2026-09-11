@@ -1,0 +1,26 @@
+{
+  "n": 35,
+  "heuristic_judge": true,
+  "agreement": {
+    "grounded": {
+      "exact_match_rate": 0.7142857142857143,
+      "mae": 0.2857142857142857,
+      "within_1_rate": 1.0
+    },
+    "relevant": {
+      "exact_match_rate": 0.45714285714285713,
+      "mae": 0.6285714285714286,
+      "within_1_rate": 0.9428571428571428
+    },
+    "tone": {
+      "exact_match_rate": 0.5714285714285714,
+      "mae": 0.5142857142857142,
+      "within_1_rate": 0.9142857142857143
+    },
+    "actionable": {
+      "exact_match_rate": 0.42857142857142855,
+      "mae": 0.6,
+      "within_1_rate": 0.9714285714285714
+    }
+  }
+}

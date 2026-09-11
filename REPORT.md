@@ -90,11 +90,26 @@ auto-handle bar, and gold complaints/billing still hit
 `ALWAYS_ESCALATE_INTENTS` when the intent string is right. That is a
 conservative router, not a better classifier.
 
-**Ablation / LLM judge / human agreement** are implemented
-(`eval/ablation.py`, `judge_calibration.py`) but were **not** run in the
-15-minute path: they need a live LLM. Hallucination-proxy 0.00 here means
-templates almost never introduce a new `$` or “N days” claim — a lower
-bound, not “no hallucinations.”
+**Ablation** (`eval/ablation.py`) needs a live LLM on the 60-row dev split
+and is outside the 15-minute path.
+
+**Judge vs human (n=35):** drafts scored 1–5 on the four axes *before* the
+judge ran (`data/judge_calibration_sample.csv`). Then
+`python eval/judge_calibration.py --step compare` (heuristic judge, same
+as the 15-minute eval).
+
+| Axis | Exact match | MAE | Within 1 |
+|---|---|---|---|
+| grounded | 0.71 | 0.29 | 1.00 |
+| relevant | 0.46 | 0.63 | 0.94 |
+| tone | 0.57 | 0.51 | 0.91 |
+| actionable | 0.43 | 0.60 | 0.97 |
+
+Grounded is usable. Actionable/relevant are weak: the heuristic awards ~4
+for “please DM,” while the rater marked vague “we’ll reach out soon” /
+“unable to comprehend” lower. Headline judge 4.0s are optimistic on
+actionability. Hallucination-proxy 0.00 means templates almost never add
+a new `$` or “N days” — a lower bound, not “no hallucinations.”
 
 **Headline:** On the required 15-minute reproduction, trust the agent as a
 **conservative escalator** (no missed gold-escalate in this slice). Do not
@@ -203,11 +218,12 @@ accuracy 0.63, tied with keywords, escalation recall 1.00.”**
   escalate. Recall 1.00 on this slice means “we did not auto-handle a
   gold-escalate ticket,” not “the model understood risk.” Precision 0.53
   means extra volume to humans.
-- **Judge scores of 4.0 are a heuristic, not LLM-as-judge.** The 15-minute
-  path does not call the rubric LLM. Templates contain “sorry” and “please
-  DM,” so tone/actionable saturate. `judge_calibration.py` (score 35 by
-  hand *before* seeing the judge) was not completed because the judge LLM
-  was down. Do not quote 4.0 as quality.
+- **Judge scores of 4.0 are a heuristic, not LLM-as-judge.** Human
+  agreement on 35 drafts: exact-match 0.71 grounded but only 0.43
+  actionable / 0.46 relevant (MAE ~0.6). The heuristic saturates on
+  “sorry / please DM.” Do not quote 4.0 as quality. The LLM judge exists
+  (`judge_reply`, `--full` / `--llm-judge`) and was not used for the
+  15-minute headline.
 - **Hallucination-proxy 0.00 is a regex on `$` and day-counts**, not
   factuality. It misses invented process (“reply to that email”) and
   over-flags numbers the customer already said.
