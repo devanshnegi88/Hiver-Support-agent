@@ -1,4 +1,4 @@
-.PHONY: install test data golden-candidates split dev-ablation eval calibrate smoke all
+.PHONY: install test data golden-candidates split dev-ablation eval eval-full eval-fast calibrate smoke all
 
 install:
 	pip install -r requirements.txt
@@ -29,9 +29,16 @@ split:
 dev-ablation:
 	python eval/ablation.py
 
-# Headline numbers for REPORT.md — run exactly once, against test split
+# Headline numbers, assignment 15-minute reproduction path
 eval:
 	python eval/run_eval.py
+
+# All 140 test examples + LLM judge (can exceed 15 min)
+eval-full:
+	python eval/run_eval.py --full
+
+eval-fast:
+	python eval/run_eval.py --fast
 
 calibrate-sample:
 	python eval/judge_calibration.py --step sample --n 35

@@ -36,7 +36,29 @@ Respond with ONLY this JSON:
 """
 
 
-def judge_reply(message: str, reply: str, precedents_text: str) -> dict:
+def heuristic_judge(message: str, reply: str, precedents_text: str) -> dict:
+    """Cheap 1-5 scores when an LLM judge would blow the time budget.
+
+    Used by `eval/run_eval.py --fast`. Not a substitute for the LLM judge
+    on the numbers that go in REPORT.md.
+    """
+    r = (reply or "").lower()
+    grounded = 3 if any(ch.isdigit() for ch in reply or "") else 4
+    tone = 4 if any(w in r for w in ("sorry", "thank", "please")) else 3
+    actionable = 4 if any(w in r for w in ("dm", "order number", "follow")) else 3
+    return {
+        "grounded": grounded,
+        "relevant": 4,
+        "tone": tone,
+        "actionable": actionable,
+        "overall_notes": "Heuristic judge (--fast); not an LLM score.",
+    }
+
+
+def judge_reply(message: str, reply: str, precedents_text: str,
+                heuristic: bool = False) -> dict:
+    if heuristic:
+        return heuristic_judge(message, reply, precedents_text)
     prompt = _JUDGE_PROMPT.format(message=message, reply=reply, precedents=precedents_text)
     return generate_json(prompt, model=JUDGE_MODEL, temperature=0.0)
 

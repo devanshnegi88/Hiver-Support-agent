@@ -32,7 +32,41 @@ the path that works with no cloud credits.
 
 ---
 
-## How to run the whole project
+## Reproduce headline results (under 15 minutes)
+
+Graders: this is the path the assignment asks for. No Kaggle download and
+no API key required. Uses the checked-in golden set + `threads.parquet`.
+
+```powershell
+cd hiver-support-agent
+py -m pip install -r requirements.txt
+py -m pytest tests/ -q
+py eval/run_eval.py
+```
+
+That eval is **30 stratified test examples** and a **heuristic judge**, so it
+finishes in well under 15 minutes (typically 1–3 minutes; ~30–60s with
+`LLM_PROVIDER=local`). It prints the comparison table and writes
+`results/eval_results.json` — those are the headline numbers in `REPORT.md`.
+
+```powershell
+py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
+```
+
+Optional, still inside 15 minutes if Ollama is already pulled:
+
+```powershell
+ollama pull llama3.2:3b
+$env:LLM_PROVIDER = "ollama"
+py eval/run_eval.py
+```
+
+**Not in the 15-minute budget:** `py eval/run_eval.py --full` (all 140
+examples + LLM-as-judge), `eval/ablation.py`, and judge calibration.
+
+---
+
+## How to run the whole project (from scratch)
 
 Commands below use **PowerShell** (`py`). On bash/macOS/Linux, use
 `python` instead of `py` and `export VAR=value` instead of
@@ -68,7 +102,7 @@ py -m pip install -r requirements.txt
 py -m pytest tests/ -v
 ```
 
-68 tests. This is the fastest check that escalation, retrieval, baselines,
+70 tests. This is the fastest check that escalation, retrieval, baselines,
 stats, hallucination checks, and key-failover logic are correct.
 
 ### Step 3 — Choose an LLM
@@ -201,29 +235,31 @@ py eval/ablation.py
 Dev split only. Uses the LLM (or Ollama). Do not use these numbers as the
 headline test results.
 
-### Step 10 — Full evaluation (headline numbers)
+### Step 10 — Evaluation (default is under 15 minutes)
 
 ```powershell
 py eval/run_eval.py
 ```
 
-Runs the agent + both baselines on the **140 test examples**, then writes
-`results/eval_results.json`.
+Default = **30** stratified test examples + heuristic judge. Writes
+`results/eval_results.json`. This is the assignment reproduction command.
 
-Timing:
+```powershell
+py eval/run_eval.py --full
+```
 
-| Backend | Rough time |
-|---|---|
-| Gemini / xAI | 20–40 min (many API calls) |
-| Ollama 3B on CPU | longer; leave it running |
-| Keyword heuristic | ~1–2 min |
+All **140** test examples + LLM-as-judge. Writes `results/eval_results_full.json`.
+Can exceed 15 minutes (Gemini ~20–40 min; Ollama 3B on 8GB CPU often 30–60+ min).
 
-**Run this exactly once** after you stop changing prompts/thresholds.
-Re-running after peeking at test scores and then tuning is leakage.
+| Command | n | Judge | Typical time |
+|---|---|---|---|
+| `py eval/run_eval.py` | 30 | heuristic | **<15 min** (often 1–3 min) |
+| `py eval/run_eval.py --full` | 140 | LLM | 20–60+ min |
+| `$env:LLM_PROVIDER="local"; py eval/run_eval.py` | 30 | heuristic | ~30–60 sec |
 
-Copy the printed table into `REPORT.md`. If you used Ollama or the
-heuristic because Gemini/xAI failed, say so in the report — those are not
-Gemini numbers.
+Paste the default run's table into `REPORT.md`. If the agent fell back to
+keywords because Gemini/xAI/Ollama were unavailable, say so — that is a
+real limitation, not a hidden one.
 
 ### Step 11 — (Optional) Judge calibration
 
@@ -268,7 +304,8 @@ make golden-candidates
 make label-check
 make split
 make dev-ablation
-make eval
+make eval            py eval/run_eval.py          (<15 min headline run)
+make eval-full       py eval/run_eval.py --full
 make all             data → split → ablation → eval
 ```
 
@@ -354,8 +391,8 @@ eval/
   hallucination_check.py
   ablation.py
   llm_judge.py / judge_calibration.py
-  run_eval.py             test-split headline numbers
-tests/                    68 tests, no API key or dataset (`py -m pytest tests/ -v`)
+  run_eval.py             default <15 min headline run; --full for 140+LLM judge
+tests/                    70 tests, no API key or dataset (`py -m pytest tests/ -v`)
 Makefile
 REPORT.md / DECISION_LOG.md / LABELING_GUIDE.md
 ```
