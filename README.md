@@ -55,10 +55,13 @@ python -m pip install -r requirements.txt
 python -m pytest tests/ -q
 python eval/leakage_check.py
 python eval/run_eval.py
+python eval/run_eval.py --fast
 ```
 
-Writes `results/quick_results.json`. Judge type is **heuristic**. If no LLM
-is up, the agent row is named `agent_keyword_fallback`.
+`--fast` is the same as the default (30 test rows). Writes `results/quick_results.json`.
+Judge type is **heuristic**. If Gemini is set it is tried first; if it fails or
+no key is set, **Ollama** is used. If neither is up, the agent row is
+`agent_keyword_fallback`.
 
 Timed locally at ~30 seconds with `LLM_PROVIDER=local`.
 
@@ -404,10 +407,12 @@ headline test results.
 
 ```powershell
 py eval/run_eval.py
+py eval/run_eval.py --fast
 ```
 
-Default = **30** stratified test examples + heuristic judge. Writes
-`results/eval_results.json`. This is the assignment reproduction command.
+Default and `--fast` are the same: **30** stratified test examples + heuristic
+judge. Writes `results/quick_results.json` (and `eval_results.json`).
+Gemini if a key is in `.env`, otherwise Ollama, otherwise keywords.
 
 ```powershell
 py eval/run_eval.py --full
@@ -418,8 +423,8 @@ Can exceed 15 minutes (Gemini ~20–40 min; Ollama 3B on 8GB CPU often 30–60+ 
 
 | Command | n | Judge | Typical time |
 |---|---|---|---|
-| `py eval/run_eval.py` | 30 | heuristic | **<15 min** (often 1–3 min) |
-| `py eval/run_eval.py --full` | 140 | LLM | 20–60+ min |
+| `py eval/run_eval.py` or `--fast` | 30 | heuristic | **<15 min** (often 1–3 min) |
+| `py eval/run_eval.py --full` | 140 | LLM (Gemini or Ollama) | 20–60+ min |
 | `$env:LLM_PROVIDER="local"; py eval/run_eval.py` | 30 | heuristic | ~30–60 sec |
 
 Paste the default run's table into `REPORT.md`. If the agent fell back to
@@ -515,7 +520,7 @@ eval/
   hallucination_check.py
   ablation.py
   llm_judge.py / judge_calibration.py
-  run_eval.py             default <15 min headline run; --full for 140+LLM judge
+  run_eval.py             default / --fast <15 min; --full for 140 + LLM judge
 tests/                    70 tests, no API key or dataset (`py -m pytest tests/ -v`)
 Makefile
 REPORT.md / DECISION_LOG.md / LABELING_GUIDE.md
