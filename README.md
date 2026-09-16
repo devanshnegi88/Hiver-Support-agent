@@ -22,13 +22,12 @@ would make the intent taxonomy trivial and the escalation logic uninteresting.
 Every LLM call (intent, reply, judge) goes through `src/llm_client.py`.
 It tries, in order:
 
-1. **Gemini** (`GOOGLE_API_KEY` / `GEMINI_API_KEY`) — preferred
-2. **xAI Grok** (`XAI_API_KEY`) — if Gemini is missing, blocked, or exhausted
-3. **Ollama** local model (`llama3.2:3b`, sized for **8GB RAM**)
-4. **Keyword heuristic** — last resort so eval never crashes
+1. **Gemini** (`GOOGLE_API_KEY` / `GEMINI_API_KEY`) — **primary**
+2. **Ollama** (`llama3.2:3b` on 8GB RAM) — fallback if Gemini fails
+3. **Keyword heuristic** — last resort; results are labeled `agent_keyword_fallback`
 
-You only need **one** of Gemini, xAI, or Ollama to run the agent. Ollama is
-the path that works with no cloud credits.
+You only need **Gemini or Ollama**. Ollama is the path that works with no
+cloud credits.
 
 ## Assignment deliverables
 
@@ -67,7 +66,7 @@ Timed locally at ~30 seconds with `LLM_PROVIDER=local`.
 
 ## Run with Ollama (no cloud API key, 8GB RAM)
 
-Use this when Gemini/xAI keys are missing, blocked, or out of credits.
+Use this when the Gemini key is missing, blocked, or out of credits.
 Model: **`llama3.2:3b`** (~2GB download, ~3–4GB RAM). Do **not** pull 7B/8B
 models on 8GB RAM.
 
@@ -162,7 +161,7 @@ Writes `results/full_results.json`. Expect `"agent_backend": "ollama"` and
 
 ---
 
-## Run with Gemini or xAI API keys
+## Run with a Gemini API key
 
 Use this when you have a working cloud key. `$env:...` lasts **only in this
 PowerShell window**. `export` does nothing in PowerShell.
@@ -176,8 +175,6 @@ PowerShell window**. `export` does nothing in PowerShell.
 ```powershell
 cd path\to\Hiver-Support-agent
 $env:GOOGLE_API_KEY = "paste-your-gemini-key-here"
-# optional backups if the first key dies:
-$env:GOOGLE_API_KEY_2 = "backup-key-2"
 ```
 
 Linux/mac: `export GOOGLE_API_KEY="paste-your-gemini-key-here"`
@@ -190,7 +187,7 @@ py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this
 
 You want a log line like `Gemini auth working` or `Gemini client: 1 key(s) loaded`.
 If you see `API_KEY_SERVICE_BLOCKED` or `ACCESS_TOKEN_TYPE_UNSUPPORTED`,
-that key cannot call Gemini — use Ollama or xAI instead.
+that key cannot call Gemini — use Ollama instead.
 
 4. FAST then FULL:
 
@@ -199,29 +196,11 @@ py eval/run_eval.py
 py eval/run_eval.py --full
 ```
 
-### xAI / Grok (if Gemini is blocked)
-
-1. Create a key at https://console.x.ai (needs credits).
-2.
-
-```powershell
-$env:XAI_API_KEY = "paste-your-xai-key-here"
-py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
-py eval/run_eval.py --full
-```
-
-Linux/mac: `export XAI_API_KEY="paste-your-xai-key-here"`
-
-If xAI returns 403 out of credits, the client falls through to Ollama, then
-keywords. Check `"agent_backend"` in the results JSON — do not report
-keyword fallback as an LLM agent.
-
 ### Auto order (if you do not set `LLM_PROVIDER`)
 
-1. Gemini, if `GOOGLE_API_KEY` / `GEMINI_API_KEY` is set  
-2. xAI, if `XAI_API_KEY` is set  
-3. Ollama on `127.0.0.1:11434`  
-4. Keyword heuristic (labeled `agent_keyword_fallback`)
+1. **Gemini** (primary), if `GOOGLE_API_KEY` / `GEMINI_API_KEY` is set  
+2. **Ollama** on `127.0.0.1:11434` if Gemini is missing or fails  
+3. Keyword heuristic (labeled `agent_keyword_fallback`)
 
 ---
 
@@ -232,30 +211,55 @@ Regenerate after a real LLM run:
 py eval/judge_calibration.py --step compare --llm-judge
 ```
 
-(`--llm-judge` needs a live Gemini/xAI/Ollama backend.)
+(`--llm-judge` needs a live Gemini or Ollama backend.)
 
 ---
 
 ## How to run the whole project (from scratch)
 
-Commands below use **PowerShell** (`py`). On bash/macOS/Linux, use
-`python` instead of `py` and `export VAR=value` instead of
-`$env:VAR = "value"`.
+**Any user can run this in one of two ways (pick ONE):**
+
+| Option | What you need | Who this is for |
+|---|---|---|
+| **A — Gemini API key** | Free key from [Google AI Studio](https://aistudio.google.com/apikey) | Cloud, no local GPU |
+| **B — Ollama only** | [Ollama](https://ollama.com) + `llama3.2:3b` (~2GB, 8GB RAM) | No API key, fully local |
+
+You do **not** need both. If you put a Gemini key in `.env`, the project uses Gemini. If Gemini is missing or fails, it uses Ollama. If you have no key, it uses Ollama only.
+
+Commands use **PowerShell** (`py`). On Linux/mac: `python` and `export VAR=value`.
 
 ### Step 0 — Prerequisites
 
 - Python 3.11+
-- ~1 GB free disk for the dataset + Ollama model
-- One of:
-  - a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey), **or**
-  - an xAI key from [console.x.ai](https://console.x.ai) with credits, **or**
-  - [Ollama](https://ollama.com) with `llama3.2:3b` (recommended on 8GB RAM)
+- **Either** a Gemini API key **or** Ollama (see options A / B below)
 
-### Step 1 — Clone and install
+### Step 1 — Clone, install requirements, `.env`
 
 ```powershell
 cd C:\Users\DELL\Downloads\hiver-support-agent\hiver-support-agent
 py -m pip install -r requirements.txt
+copy .env.example .env
+```
+
+`requirements.txt` installs: pandas, scikit-learn, pyarrow, numpy, pytest.
+
+Open `.env` and fill **only what you use**:
+
+**Option A — Gemini (API key):**
+
+```env
+GOOGLE_API_KEY=paste-your-gemini-key-here
+GEN_MODEL=gemini-2.5-flash
+JUDGE_MODEL=gemini-2.5-flash
+```
+
+**Option B — Ollama only (leave GOOGLE_API_KEY empty):**
+
+```env
+GOOGLE_API_KEY=
+OLLAMA_HOST=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3.2:3b
+OLLAMA_NUM_CTX=2048
 ```
 
 Optional virtualenv:
@@ -272,17 +276,45 @@ py -m pip install -r requirements.txt
 py -m pytest tests/ -v
 ```
 
-78 tests. This is the fastest check that escalation, retrieval, baselines,
-stats, hallucination checks, and key-failover logic are correct.
+### Step 3 — Start the LLM you chose
 
-### Step 3 — Choose an LLM
+**Option A — Gemini only**
 
-Follow one of the full write-ups above:
+Nothing else to start. Smoke-test:
 
-- **Ollama:** “Run with Ollama (no cloud API key, 8GB RAM)”
-- **Gemini / xAI:** “Run with Gemini or xAI API keys”
+```powershell
+py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
+```
 
-Keep using the **same** terminal after you set `$env:...` or `export`.
+You want `Gemini auth working` (or `Gemini client: 1 key loaded`). Then:
+
+```powershell
+py eval/run_eval.py
+py eval/run_eval.py --full
+```
+
+**Option B — Ollama only (no API key)**
+
+Window 1:
+
+```powershell
+ollama serve
+```
+
+Window 2:
+
+```powershell
+ollama pull llama3.2:3b
+cd C:\Users\DELL\Downloads\hiver-support-agent\hiver-support-agent
+$env:LLM_PROVIDER = "ollama"
+py src/pipeline.py "My package still hasn't shown up and it's been 2 weeks, this is ridiculous"
+py eval/run_eval.py
+py eval/run_eval.py --full
+```
+
+You want `Using Ollama model llama3.2:3b`. If you see `agent_keyword_fallback`, Ollama is not running.
+
+**If Gemini fails** (`API_KEY_SERVICE_BLOCKED`), keep Ollama running — the project falls back automatically. You do not need to set `LLM_PROVIDER` unless you want to **skip** Gemini.
 
 ### Step 4 — Get the data
 
@@ -350,9 +382,9 @@ Expect JSON with `intent`, `draft_reply`, `escalate`, `escalation_reason`.
 
 | Log line | Meaning |
 |---|---|
-| `Gemini auth working: ...` | Cloud Gemini is live |
-| `falling back to xAI` | Gemini failed; Grok is live |
-| `Using Ollama model llama3.2:3b` | Local 8GB model is live |
+| `Gemini auth working: ...` | Cloud Gemini is live (primary) |
+| `falling back to Ollama` | Gemini failed; local 3B model is live |
+
 | `using keyword heuristic backend` | No LLM available; eval can still run |
 
 First Ollama call can take 30–60s while the model loads.
@@ -391,7 +423,7 @@ Can exceed 15 minutes (Gemini ~20–40 min; Ollama 3B on 8GB CPU often 30–60+ 
 | `$env:LLM_PROVIDER="local"; py eval/run_eval.py` | 30 | heuristic | ~30–60 sec |
 
 Paste the default run's table into `REPORT.md`. If the agent fell back to
-keywords because Gemini/xAI/Ollama were unavailable, say so — that is a
+keywords because Gemini/Ollama were unavailable, say so — that is a
 real limitation, not a hidden one.
 
 ### Step 11 — (Optional) Judge calibration
@@ -448,16 +480,15 @@ On Windows without `make`, use the `py ...` commands in the steps above.
 
 ## LLM troubleshooting
 
-Install and run steps: **Run with Ollama** and **Run with Gemini or xAI API keys** above.
+Install and run steps: **Run with Ollama** and **Run with a Gemini API key** above.
 
 | Error | What happens |
 |---|---|
-| Expired / invalid Gemini key | Retired; next `GOOGLE_API_KEY_2`… is used |
-| 429 / quota | Rotate keys; old key stays in the pool |
-| `API_KEY_SERVICE_BLOCKED` / `ACCESS_TOKEN_TYPE_UNSUPPORTED` | Skip Gemini; try xAI, then Ollama |
-| xAI 403 out of credits | Skip xAI; try Ollama |
-| Ollama not running | Keyword heuristic; results JSON says `agent_keyword_fallback` |
-| Model 404 | Pin `GEN_MODEL` in `src/config.py` (`gemini-3.6-flash`) |
+| Expired / invalid Gemini key | Skip Gemini; try Ollama |
+| 429 / quota | Skip Gemini; try Ollama |
+| `API_KEY_SERVICE_BLOCKED` / `ACCESS_TOKEN_TYPE_UNSUPPORTED` | Skip Gemini; try **Ollama** |
+| Ollama not running | Keyword heuristic (`agent_keyword_fallback`) |
+| Model 404 | Pin `GEN_MODEL` in `src/config.py` (`gemini-2.5-flash`) |
 
 Always read `"agent_backend"` and `"judge_type"` in the results JSON before quoting numbers.
 
@@ -469,7 +500,7 @@ Always read `"agent_backend"` and `"judge_type"` in the results JSON before quot
 src/
   config.py       brand, model, intent taxonomy, thresholds
   data_prep.py    raw twcs.csv → (customer, brand_reply) pairs
-  llm_client.py   Gemini → xAI → Ollama → heuristic
+  llm_client.py   Gemini → Ollama → heuristic
   intents.py      intent classification
   retrieval.py    TF-IDF precedent search
   reply_gen.py    grounded reply drafting

@@ -30,4 +30,4 @@ Non-obvious calls, and why. (15 items — assignment asks for 10–15.)
 
 14. **Every headline metric has a bootstrap 95% CI; agent vs baseline is a paired bootstrap test; a non-LLM numeric-claim checker runs next to the judge.** n=30 (15-minute path) or n=140 (`--full`) is small. A 6-point “win” without a p-value is noise. The regex hallucination proxy exists because an all-LLM eval stack cannot fully audit itself.
 
-15. **FAST vs FULL eval, and an honest backend label.** `python eval/run_eval.py` is FAST: 30 test rows, heuristic judge, under 15 minutes, **not** LLM-as-judge. `--full` is 140 rows and uses an LLM judge when a backend answers. If Gemini/xAI/Ollama all fail, the “agent” is recorded as `agent_keyword_fallback` — never as an LLM agent. Headline numbers must name the backend.
+15. **FAST vs FULL eval, and an honest backend label.** `python eval/run_eval.py` is FAST: 30 test rows, heuristic judge, under 15 minutes, **not** LLM-as-judge. `--full` is 140 rows and uses an LLM judge when a backend answers. If Gemini and Ollama both fail, the “agent” is recorded as `agent_keyword_fallback` — never as an LLM agent. Headline numbers must name the backend.

@@ -65,7 +65,7 @@ afternoon with zero ML.
 **Agent:** TF-IDF retrieve top-3 historical AmazonHelp replies (excluding
 the example’s own id) → classify intent → rule-based escalate
 (`ALWAYS_ESCALATE_INTENTS`, confidence &lt; 0.65, or similarity &lt; 0.25) →
-draft only if a precedent exists. LLM path is Gemini → xAI → Ollama 3B →
+draft only if a precedent exists. LLM path is Gemini → Ollama 3B →
 keywords. On this reproduction the cloud keys failed, so **intent is the
 keyword path plus a couple of extra delivery patterns**.
 
@@ -213,7 +213,7 @@ This section is mandatory. The headline to distrust first is **“agent intent
 accuracy 0.63, tied with keywords, escalation recall 1.00.”**
 
 - **The 15-minute number is not an LLM result.** Gemini returned
-  `API_KEY_SERVICE_BLOCKED`. xAI returned 403 (credits / spend limit).
+  `API_KEY_SERVICE_BLOCKED`. Ollama is the only fallback.
   Intent therefore used the keyword fallback. Tying the simple baseline
   (p = 1.0) is *the same system competing with itself*, not evidence that
   retrieval + prompting is “as good as regex.”

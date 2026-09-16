@@ -2,6 +2,7 @@
 Central config for the support agent.
 
 Swapping brands / models should only require editing this file.
+Keys are loaded from a project-root `.env` file (see `.env.example`).
 """
 import os
 from pathlib import Path
@@ -9,6 +10,35 @@ from pathlib import Path
 # ---- Paths -----------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
+
+
+def load_env_file(path: Path | None = None, override: bool = False) -> None:
+    """Load KEY=VALUE pairs from `.env` into os.environ.
+
+    Does not override variables already set in the shell (so `$env:GOOGLE_API_KEY`
+    still wins). Missing file is a no-op.
+    """
+    env_path = path or (ROOT / ".env")
+    if not env_path.is_file():
+        return
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if not key or not val:
+            continue
+        if override or key not in os.environ:
+            os.environ[key] = val
+
+
+load_env_file()
 RAW_CSV = DATA_DIR / "twcs.csv"                 # the Kaggle twcs.csv you download
 THREADS_PARQUET = DATA_DIR / "threads.parquet"  # built by data_prep.py
 GOLDEN_SET_CSV = DATA_DIR / "golden_set.csv"
@@ -30,54 +60,19 @@ BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "AmazonHelp")
 
 # ---- LLM ---------------------------------------------------------------
 def load_google_api_keys(env=None) -> list[str]:
-    """Collect Gemini keys from the environment, first-listed first.
-
-    Accepted (any combination; duplicates dropped, order preserved):
-      GOOGLE_API_KEY          first/primary key
-      GEMINI_API_KEY          alias used by the current google-genai SDK
-      GOOGLE_API_KEY_2 .. _N  backups (also accepts _1)
-      GOOGLE_API_KEYS         comma- or semicolon-separated list
-    """
+    """Single Gemini key: GOOGLE_API_KEY, or GEMINI_API_KEY if that is unset."""
     env = os.environ if env is None else env
-    keys: list[str] = []
-    seen: set[str] = set()
-
-    def add(raw: str) -> None:
-        if not raw:
-            return
-        for part in str(raw).replace(";", ",").split(","):
-            k = part.strip().strip('"').strip("'").replace("\n", "").replace("\r", "")
-            if k and k not in seen:
-                seen.add(k)
-                keys.append(k)
-
-    add(env.get("GOOGLE_API_KEY", ""))
-    add(env.get("GEMINI_API_KEY", ""))
-    add(env.get("GOOGLE_API_KEYS", ""))
-    consecutive_empty = 0
-    for i in range(1, 21):
-        v = env.get(f"GOOGLE_API_KEY_{i}", "")
-        if v:
-            add(v)
-            consecutive_empty = 0
-        else:
-            consecutive_empty += 1
-            if i >= 2 and consecutive_empty >= 3:
-                break
-    return keys
+    for name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+        raw = (env.get(name) or "").strip().strip('"').strip("'").replace("\n", "").replace("\r", "")
+        if raw:
+            return [raw]
+    return []
 
 
 GOOGLE_API_KEYS = load_google_api_keys()
 GOOGLE_API_KEY = GOOGLE_API_KEYS[0] if GOOGLE_API_KEYS else ""
-GEN_MODEL = "gemini-3.6-flash"      # classification + reply drafting
-# Used with the Interactions REST API (see src/llm_client.py).
-JUDGE_MODEL = "gemini-3.6-flash"    # LLM-as-judge (kept separate constant so
-                                     # you can deliberately use a *different*
-                                     # model than the generator to reduce
-                                     # self-preference bias if you want)
-                                     # 2.0-flash was retired by the Gemini API
-                                     # (404); 3.6-flash is the replacement
-                                     # the API itself instructed us to use.
+GEN_MODEL = os.environ.get("GEN_MODEL", "gemini-2.5-flash")
+JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash")
 
 # ---- Intent taxonomy -----------------------------------------------------
 # Defined by inspecting a sample of real threads for BRAND_HANDLE (see
