@@ -3,7 +3,7 @@
   "n_examples": 30,
   "judge_type": "heuristic",
   "agent_backend": "heuristic",
-  "timestamp": "2026-09-16T06:25:46.927819+00:00",
+  "timestamp": "2026-09-16T07:05:02.015173+00:00",
   "thresholds": {
     "min_auto_handle_confidence": 0.65,
     "min_grounding_similarity": 0.25

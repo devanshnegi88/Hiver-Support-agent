@@ -68,6 +68,13 @@ _ollama_model: str | None = None
 _gemini_unusable = False
 
 
+def get_active_backend() -> str:
+    """Which generator actually answered: gemini | ollama | heuristic."""
+    if os.environ.get("LLM_PROVIDER", "").lower() == "local":
+        return "heuristic"
+    return _active_backend or "heuristic"
+
+
 # ---------------------------------------------------------------------------
 # Error helpers
 # ---------------------------------------------------------------------------
