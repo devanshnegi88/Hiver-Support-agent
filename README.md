@@ -1,21 +1,88 @@
-# Hiver SDE Intern Assignment — AI Support Agent for AmazonHelp
+# 🤖 Hiver SDE Intern Assignment — AI Support Agent for AmazonHelp
 
-An AI support agent built on the [Customer Support on Twitter](https://www.kaggle.com/datasets/thoughtvector/customer-support-on-twitter)
-dataset, targeting the `AmazonHelp` brand. Given an incoming customer tweet,
-the agent:
+<p align="center">
+  <strong>An intent-aware, retrieval-grounded AI customer support agent built for AmazonHelp</strong>
+</p>
 
-1. Classifies intent into one of 10 brand-derived categories
-2. Drafts a reply grounded in how AmazonHelp has historically resolved similar issues (TF-IDF retrieval over historical resolved threads + LLM generation)
-3. Decides auto-handle vs. escalate, with a stated reason
+<p align="center">
+  <a href="https://github.com/devanshnegi88/Hiver-Support-agent">
+    <img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub">
+  </a>
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/LLM-Gemini%20%7C%20Ollama-8E75B2?style=for-the-badge" alt="LLM">
+  <img src="https://img.shields.io/badge/Retrieval-TF--IDF-FF6F00?style=for-the-badge" alt="TF-IDF">
+  <img src="https://img.shields.io/badge/Evaluation-LLM--as--Judge-0A7B83?style=for-the-badge" alt="Evaluation">
+</p>
 
-See `REPORT.md` for problem framing, results, and failure analysis, and
-`DECISION_LOG.md` for the non-obvious calls made along the way.
+<p align="center">
+  <img src="https://img.shields.io/badge/Tests-70%20passing-2EA44F?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/Golden%20Set-200%20examples-6F42C1?style=flat-square" alt="Golden Set">
+  <img src="https://img.shields.io/badge/Test%20Split-140%20examples-0969DA?style=flat-square" alt="Test Split">
+  <img src="https://img.shields.io/badge/Fast%20Eval-%3C15%20min-F39C12?style=flat-square" alt="Fast Evaluation">
+</p>
 
-## Why AmazonHelp
+---
 
-Highest-volume single brand in the dataset, wide variety of issue types
-(delivery, refunds, account, billing). A brand with only 1–2 issue types
-would make the intent taxonomy trivial and the escalation logic uninteresting.
+## 🎯 Overview
+
+This project implements an **AI customer support agent for AmazonHelp**, built as part of the **Hiver SDE Intern Assignment**.
+
+Given an incoming customer tweet, the system:
+
+1. 🧠 **Classifies the customer intent** into one of 10 AmazonHelp-derived categories.
+2. 🔎 **Retrieves similar historical support interactions** using TF-IDF similarity.
+3. ✍️ **Generates a grounded support reply** based on historically resolved cases.
+4. 🚦 **Decides whether to auto-handle or escalate** the request.
+5. 📝 **Explains the escalation decision** rather than returning a black-box decision.
+6. 📊 **Evaluates the system** using automated metrics, baselines, an LLM-as-judge, and human agreement analysis.
+
+The core design principle is simple:
+
+> **Don't let the LLM invent the support policy. Retrieve how the brand historically handled similar cases, then generate from that evidence.**
+
+---
+
+## 🏗️ Architecture
+
+```text
+                         ┌──────────────────────┐
+                         │   Customer Tweet     │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Intent Classification│
+                         │   10 Intent Classes  │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Historical Retrieval │
+                         │      TF-IDF Search   │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Grounded Reply Gen.  │
+                         │ Gemini / Ollama / LLM│
+                         └──────────┬───────────┘
+                                    │
+                         ┌──────────┴──────────┐
+                         ▼                     ▼
+                 ┌──────────────┐      ┌──────────────┐
+                 │ Auto Handle  │      │   Escalate   │
+                 └──────────────┘      └──────────────┘
+                         │                     │
+                         └──────────┬──────────┘
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Structured JSON      │
+                         │ intent               │
+                         │ draft_reply          │
+                         │ escalate             │
+                         │ escalation_reason    │
+                         └──────────────────────┘
+```
 
 ## LLM backends (automatic)
 
