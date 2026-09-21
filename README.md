@@ -1,4 +1,4 @@
-# 🤖 Hiver SDE Intern Assignment — AI Support Agent for AmazonHelp
+# 🤖 AI Support Agent for AmazonHelp
 
 <p align="center">
   <strong>An intent-aware, retrieval-grounded AI customer support agent built for AmazonHelp</strong>
