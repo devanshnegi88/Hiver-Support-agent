@@ -1,8 +1,11 @@
 # 🤖 AI Support Agent for AmazonHelp
 
+<img width="2048" height="768" alt="Image" src="https://github.com/user-attachments/assets/52f577c8-a6d3-4e5d-b402-c967b147f950" />
+
 <p align="center">
   <strong>An intent-aware, retrieval-grounded AI customer support agent built for AmazonHelp</strong>
 </p>
+
 
 <p align="center">
   <a href="https://github.com/devanshnegi88/Hiver-Support-agent">
