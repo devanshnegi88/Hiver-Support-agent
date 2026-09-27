@@ -47,45 +47,7 @@ The core design principle is simple:
 
 ## 🏗️ Architecture
 
-```text
-                         ┌──────────────────────┐
-                         │   Customer Tweet     │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │ Intent Classification│
-                         │   10 Intent Classes  │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │ Historical Retrieval │
-                         │      TF-IDF Search   │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │ Grounded Reply Gen.  │
-                         │ Gemini / Ollama / LLM│
-                         └──────────┬───────────┘
-                                    │
-                         ┌──────────┴──────────┐
-                         ▼                     ▼
-                 ┌──────────────┐      ┌──────────────┐
-                 │ Auto Handle  │      │   Escalate   │
-                 └──────────────┘      └──────────────┘
-                         │                     │
-                         └──────────┬──────────┘
-                                    ▼
-                         ┌──────────────────────┐
-                         │ Structured JSON      │
-                         │ intent               │
-                         │ draft_reply          │
-                         │ escalate             │
-                         │ escalation_reason    │
-                         └──────────────────────┘
-```
+<img width="1536" height="1024" alt="Image" src="https://github.com/user-attachments/assets/5ffd446c-84ba-4975-8ea4-1b7dc0abf820" />
 
 ## LLM backends (automatic)
 
@@ -99,7 +61,7 @@ It tries, in order:
 You only need **Gemini or Ollama**. Ollama is the path that works with no
 cloud credits.
 
-## Assignment deliverables
+## Deliverables
 
 | Required | Where |
 |---|---|
